@@ -1,0 +1,24 @@
+name: observatory
+description: Check a pull request or a push against the rules in .observatory
+inputs:
+  scope:
+    description: Arguments for `observatory run`, such as `--all` or `--commit HEAD`. Empty means the changes of the pull request.
+    default: ""
+  anthropic-api-key:
+    description: The Anthropic API key. Store it in a secret. For an other provider, set its key with `env` on the job instead.
+    required: false
+  version:
+    description: The observatory version to install.
+    default: latest
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@v5
+      with:
+        go-version: stable
+    - run: go install github.com/Open-Source-Lodge/observatory@${{ inputs.version }}
+      shell: bash
+    - run: observatory run ${{ inputs.scope }}
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}

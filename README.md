@@ -16,7 +16,8 @@ make build                                                  # then move bin/obse
 go install github.com/Open-Source-Lodge/observatory@latest
 ```
 
-Observatory needs `git`, and an Anthropic API key in `ANTHROPIC_API_KEY`.
+Observatory needs `git`, and an Anthropic API key in `ANTHROPIC_API_KEY`. See
+"Providers" for the other APIs.
 
 ## Commands
 
@@ -111,7 +112,10 @@ The file `.observatory/config` holds the settings. The format is `key = value`
 with `#` comments. The `init` command writes the defaults:
 
 ```toml
+provider = "anthropic"
 model = "claude-opus-5"
+base_url = ""
+api_key_env = ""
 max_tokens = 200000
 max_output_tokens = 8000
 per_rule = false
@@ -119,13 +123,53 @@ per_rule = false
 
 | key                 | meaning                                                                           |
 | ------------------- | --------------------------------------------------------------------------------- |
-| `model`             | the Claude model that checks the rules                                            |
+| `provider`          | the API that checks the rules: `anthropic`, `openai` or `claude`                  |
+| `model`             | the model that checks the rules                                                   |
+| `base_url`          | the URL of the API; empty is the default of the provider                          |
+| `api_key_env`       | the environment variable that holds the API key; empty is `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
 | `max_tokens`        | the largest prompt observatory sends; a run that would send more stops before it spends anything |
 | `max_output_tokens` | the largest answer observatory accepts from the model                             |
 | `per_rule`          | `true` sends one request per rule; `false` sends one request for all the rules   |
 
 One request for all the rules is the cheaper option. One request per rule
 gives each rule the full attention of the model, and costs a request per rule.
+
+An environment variable `OBSERVATORY_<KEY>` replaces the value of a key. Write
+the key in upper case, for example `OBSERVATORY_MODEL=claude-sonnet-5`. The
+environment variable wins over the config file.
+
+### Providers
+
+The `anthropic` provider is the default. It uses the Anthropic API with the
+key in `ANTHROPIC_API_KEY`.
+
+The `openai` provider sends a chat completions request to `base_url`. OpenAI,
+Ollama, OpenRouter and Groq all accept this request. The provider reads the
+key from `OPENAI_API_KEY`. Ollama does not check the key, but the variable
+must have a value. This config uses a local Ollama:
+
+```toml
+provider = "openai"
+model = "llama3.3"
+base_url = "http://localhost:11434/v1"
+```
+
+The `openai` provider has no count of the tokens before the request. It
+estimates the size of the prompt for the `max_tokens` check, and reports the
+true count after the request.
+
+The `claude` provider runs the `claude` command of Claude Code. The command
+uses its own login, so a Claude subscription works without an API key. Log in
+once with `claude`, then set the provider:
+
+```toml
+provider = "claude"
+model = "opus"
+```
+
+The provider runs `claude -p` with no tools and no MCP servers, and estimates
+the tokens as the `openai` provider does. The `max_output_tokens` key has no
+effect on this provider.
 
 ## Interactive mode
 
