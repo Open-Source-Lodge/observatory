@@ -23,3 +23,5 @@ Then change the text so that it matches your repository.
 | `error-handling`      | errors are not ignored                          |
 | `database-migrations` | a schema change comes with a migration          |
 | `public-api`          | a change to the public API is backward compatible |
+| `rate-limiting`       | each call to an external service has a rate limit |
+| `documentation-style` | documentation follows ASD-STE100                  |
