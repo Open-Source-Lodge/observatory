@@ -1,13 +1,17 @@
 # observatory
 
-Observatory is a command line tool and a terminal user interface. It checks a
-git repository against rules that you write in plain language. A rule can be
-"use httpx for every HTTP call" or "each public function has a docstring".
-Observatory sends the rules and the changes to Claude, and Claude gives a
-verdict for each rule. Think of it as `pytest` for the rules that a linter
-cannot express.
+Observatory is a testing system that uses LLMs to make sure that your
+repository, code, product or service obeys your rules. It behaves as a linter
+that can check rules on a higher level, including rules that are harder to
+write as code.
 
-Observatory runs on your machine, or in a GitHub Actions workflow.
+You write the rules in plain language. A rule can be "use httpx for every HTTP
+call" or "each public function has a docstring". Observatory sends the rules
+and the changes to the model, and the model gives a verdict for each rule.
+Think of it as `pytest` for the rules that a linter cannot express.
+
+Observatory is a command line tool with a terminal user interface. It runs on
+your machine, or in a GitHub Actions workflow.
 
 ## Install
 
