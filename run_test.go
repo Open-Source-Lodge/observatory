@@ -49,7 +49,7 @@ func TestParseFindings(t *testing.T) {
 	if !(Report{Findings: got}).Failed() {
 		t.Error("report with a failure reports no failure")
 	}
-	if got, err := parseFindings("```json\n{\"results\":[]}\n```", testRules); err != nil || len(got) != len(testRules) {
+	if got, err := parseFindings("Here it is:\n```json\n{\"results\":[]}\n```\nDone {see above}.", testRules); err != nil || len(got) != len(testRules) {
 		t.Errorf("fenced JSON: %v %v", got, err)
 	}
 	if _, err := parseFindings("not json", testRules); err == nil {
