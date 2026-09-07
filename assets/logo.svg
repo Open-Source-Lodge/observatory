@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 200" width="520" height="200" role="img" aria-label="Observatory logo">
-  <!-- The dome is a calotte enclosure. It is inspired by the TMT International Observatory. -->
+  <!-- The dome is a calotte enclosure. The TMT International Observatory gave the idea for it. -->
   <clipPath id="frame"><rect width="520" height="200" rx="16"/></clipPath>
   <rect width="520" height="200" rx="16" fill="#0b1b3a"/>
 
