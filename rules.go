@@ -102,8 +102,9 @@ const idPrefix = "OBS-"
 
 // newID is one more than the highest ID in dir.
 //
-// ponytail: sequential IDs read well, but two branches that each add a rule
-// get the same ID. Rename one directory when that merge happens.
+// newID makes the next sequential ID. Sequential IDs are easy to read, but
+// two branches that each add a rule get the same ID. Rename one directory
+// when that merge occurs.
 func newID(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {

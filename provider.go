@@ -45,7 +45,8 @@ func newProvider(cfg Config) (provider, error) {
 
 // postJSON sends body to url as JSON and decodes the answer into out.
 //
-// ponytail: no retry on 429 or 5xx. Add one when a run fails on it.
+// postJSON does not retry after a 429 or a 5xx status. Add a retry when a
+// run fails on one.
 func postJSON(ctx context.Context, url string, headers map[string]string, body, out any) error {
 	data, _ := json.Marshal(body)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
@@ -154,8 +155,8 @@ type openaiProvider struct {
 }
 
 func (p openaiProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// ponytail: this API has no count endpoint. Four bytes per token is the
-	// usual estimate; the usage in the answer gives the true count.
+	// This API has no count endpoint. Four bytes per token is the usual
+	// estimate. The usage in the answer gives the true count.
 	return int64(len(prompt) / 4), nil
 }
 
@@ -179,8 +180,8 @@ func (p openaiProvider) complete(ctx context.Context, prompt string) (string, in
 	}
 	err := postJSON(ctx, strings.TrimRight(p.cfg.BaseURL, "/")+"/chat/completions", headers, map[string]any{
 		"model": p.cfg.Model,
-		// ponytail: max_tokens works on Ollama, OpenRouter and Groq. The
-		// OpenAI reasoning models want max_completion_tokens instead.
+		// The key max_tokens works on Ollama, OpenRouter and Groq. The OpenAI
+		// reasoning models need max_completion_tokens.
 		"max_tokens": p.cfg.MaxOutputTokens,
 		"messages":   userMessage(prompt),
 		"response_format": map[string]any{
@@ -216,7 +217,8 @@ type claudeProvider struct {
 }
 
 func (p claudeProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// ponytail: the count endpoint needs an API key. Estimate as openai does.
+	// The count endpoint needs an API key. The estimate is the same as for
+	// the openai provider.
 	return int64(len(prompt) / 4), nil
 }
 
@@ -272,7 +274,8 @@ type copilotProvider struct {
 }
 
 func (p copilotProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// ponytail: the command has no count endpoint. Estimate as openai does.
+	// The command has no count endpoint. The estimate is the same as for
+	// the openai provider.
 	return int64(len(prompt) / 4), nil
 }
 
@@ -280,8 +283,8 @@ func (p copilotProvider) complete(ctx context.Context, prompt string) (string, i
 	// The prompt goes on stdin: the command reads stdin as the prompt when
 	// stdin is not a terminal. No tools and no MCP servers: the model must
 	// judge only the prompt.
-	// ponytail: --available-tools with an empty value means every tool, so
-	// name a tool that does not exist.
+	// The flag --available-tools with an empty value permits every tool.
+	// Thus the value names a tool that does not exist.
 	cmd := exec.CommandContext(ctx, "copilot", "--silent", "--model", p.cfg.Model,
 		"--available-tools=none", "--disable-builtin-mcps", "--no-custom-instructions",
 		"--no-ask-user", "--no-auto-update", "--no-color")
@@ -292,7 +295,8 @@ func (p copilotProvider) complete(ctx context.Context, prompt string) (string, i
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("copilot: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	// ponytail: the command reports no token usage. Both counts are estimates.
+	// The command does not report the token usage. The two counts are
+	// estimates.
 	return string(data), int64(len(prompt) / 4), int64(len(data) / 4), nil
 }
 
