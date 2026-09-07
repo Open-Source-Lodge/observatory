@@ -1,8 +1,10 @@
+<p align="center"><img src="assets/logo.svg" alt="Observatory logo" width="520"></p>
+
 # observatory
 
 Observatory is a test system that uses LLMs to make sure that your
-repository, code, product or service obeys your rules. It is a linter for
-rules that are hard, or not possible, to write as code.
+repository, code, product or service obeys your rules. It is a checker for
+rules that can be hard, or even not possible, to write as code.
 
 You write the rules in plain language. A rule can be "use httpx for every HTTP
 call" or "each public function has a docstring". Observatory sends the rules
