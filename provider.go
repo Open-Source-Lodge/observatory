@@ -24,8 +24,9 @@ type provider interface {
 	complete(ctx context.Context, prompt string, schema map[string]any) (text string, in, out int64, err error)
 }
 
-// newProvider makes the provider that the config names.
-func newProvider(cfg Config) (provider, error) {
+// newProvider makes the provider that the config names. It is a variable,
+// so that a test can replace the real provider.
+var newProvider = func(cfg Config) (provider, error) {
 	switch cfg.Provider {
 	case "anthropic":
 		return anthropicProvider{cfg: cfg}, nil

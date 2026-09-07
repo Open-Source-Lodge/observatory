@@ -231,3 +231,31 @@ func TestDraft(t *testing.T) {
 		t.Error("expected an error for a non-JSON answer")
 	}
 }
+
+func TestCheckIgnore(t *testing.T) {
+	status = func(string) func() { return func() {} }
+	rules := []Rule{
+		{ID: "aaaa0002", Title: "No prints", Text: "x", Ignore: []string{"*.py"}},
+		{ID: "aaaa0001", Title: "Use httpx", Text: "x"},
+	}
+	if got := batches(rules, false); len(got) != 2 || len(got[0]) != 1 || got[0][0].ID != "aaaa0002" {
+		t.Errorf("batches: %v", got)
+	}
+	if got := batches(testRules, false); len(got) != 1 || len(got[0]) != 2 {
+		t.Errorf("batches without ignore: %v", got)
+	}
+	if got := batches(testRules, true); len(got) != 2 {
+		t.Errorf("batches per rule: %v", got)
+	}
+	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
+	report, err := check(context.Background(), Config{Model: "m", MaxTokens: 100}, rules, Scope{Commit: "HEAD"}, "diff --git a/main.py b/main.py\n+print(1)\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Findings) != 2 || report.Findings[0].ID != "aaaa0002" || !report.Findings[0].Pass || report.Findings[0].Reason != "the rule ignores every file in the changes" {
+		t.Errorf("ignored rule: %+v", report.Findings)
+	}
+	if report.Findings[1].ID != "aaaa0001" || !report.Findings[1].Pass || report.InputTokens != 7 {
+		t.Errorf("asked rule: %+v %d", report.Findings, report.InputTokens)
+	}
+}

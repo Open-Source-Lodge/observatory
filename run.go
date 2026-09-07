@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -68,8 +69,10 @@ func (r Report) Failed() bool {
 	return false
 }
 
-// check asks the model for a finding per rule: one request for all the
-// rules, or one request per rule when the config says per_rule.
+// check asks the model for a finding per rule. The rules that see the same
+// changes share one request, or each rule has its own request when the
+// config says per_rule. A rule that ignores every file in the changes
+// passes without a request.
 func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff string) (Report, error) {
 	if len(rules) == 0 {
 		return Report{}, errors.New("no rules — add one with 'observatory add <title>'")
@@ -82,24 +85,58 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 		return Report{}, err
 	}
 	head := fmt.Sprintf("check of %s with %s %s", scope, cfg.Provider, cfg.Model)
-	if !cfg.PerRule {
-		stop := status(head + ", " + rulesLabel(rules))
-		defer stop()
-		return ask(ctx, p, cfg, rules, scope, diff)
-	}
 	report := Report{Scope: scope.String(), Model: cfg.Model}
-	for i, r := range rules {
-		stop := status(fmt.Sprintf("%s, %d/%d %s", head, i+1, len(rules), rulesLabel([]Rule{r})))
-		one, err := ask(ctx, p, cfg, []Rule{r}, scope, diff)
+	groups := batches(rules, cfg.PerRule)
+	for i, g := range groups {
+		label := head + ", " + rulesLabel(g)
+		if len(groups) > 1 {
+			label = fmt.Sprintf("%s, %d/%d %s", head, i+1, len(groups), rulesLabel(g))
+		}
+		seen := withoutIgnored(diff, g[0].Ignore)
+		if seen == "" {
+			for _, r := range g {
+				report.Findings = append(report.Findings, Finding{ID: r.ID, Pass: true, Reason: "the rule ignores every file in the changes"})
+			}
+			continue
+		}
+		stop := status(label)
+		one, err := ask(ctx, p, cfg, g, scope, seen)
 		stop()
 		if err != nil {
-			return report, fmt.Errorf("rule %s: %w", r.ID, err)
+			return report, fmt.Errorf("%s: %w", rulesLabel(g), err)
 		}
 		report.Findings = append(report.Findings, one.Findings...)
 		report.InputTokens += one.InputTokens
 		report.OutputTokens += one.OutputTokens
 	}
+	sortFindings(report.Findings, rules)
 	return report, nil
+}
+
+// batches groups the rules for the requests: one rule per group when
+// perRule is true, else one group per distinct ignore list.
+func batches(rules []Rule, perRule bool) [][]Rule {
+	var out [][]Rule
+	index := map[string]int{}
+	for _, r := range rules {
+		key := strings.Join(r.Ignore, "\n")
+		if i, ok := index[key]; ok && !perRule {
+			out[i] = append(out[i], r)
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, []Rule{r})
+	}
+	return out
+}
+
+// sortFindings puts the findings in the order of the rules.
+func sortFindings(findings []Finding, rules []Rule) {
+	order := map[string]int{}
+	for i, r := range rules {
+		order[r.ID] = i
+	}
+	sort.SliceStable(findings, func(i, j int) bool { return order[findings[i].ID] < order[findings[j].ID] })
 }
 
 // rulesLabel names the rules of a request: one rule with its title, or the
