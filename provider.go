@@ -18,8 +18,10 @@ import (
 type provider interface {
 	// countTokens is the size of the prompt, for the max_tokens check.
 	countTokens(ctx context.Context, prompt string) (int64, error)
-	// complete returns the JSON answer and the tokens the request used.
-	complete(ctx context.Context, prompt string) (text string, in, out int64, err error)
+	// complete returns the JSON answer and the tokens the request used. The
+	// schema is the shape of the answer; a provider without a schema option
+	// ignores it.
+	complete(ctx context.Context, prompt string, schema map[string]any) (text string, in, out int64, err error)
 }
 
 // newProvider makes the provider that the config names.
@@ -106,7 +108,7 @@ func (p anthropicProvider) countTokens(ctx context.Context, prompt string) (int6
 	return out.InputTokens, err
 }
 
-func (p anthropicProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
+func (p anthropicProvider) complete(ctx context.Context, prompt string, schema map[string]any) (string, int64, int64, error) {
 	var out struct {
 		Content []struct {
 			Type string `json:"type"`
@@ -126,7 +128,7 @@ func (p anthropicProvider) complete(ctx context.Context, prompt string) (string,
 		"max_tokens": p.cfg.MaxOutputTokens,
 		"messages":   userMessage(prompt),
 		"output_config": map[string]any{
-			"format": map[string]any{"type": "json_schema", "schema": findingsSchema()},
+			"format": map[string]any{"type": "json_schema", "schema": schema},
 		},
 	}, &out)
 	if err != nil {
@@ -160,7 +162,7 @@ func (p openaiProvider) countTokens(_ context.Context, prompt string) (int64, er
 	return int64(len(prompt) / 4), nil
 }
 
-func (p openaiProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
+func (p openaiProvider) complete(ctx context.Context, prompt string, schema map[string]any) (string, int64, int64, error) {
 	headers := map[string]string{}
 	if key := os.Getenv(p.cfg.APIKeyEnv); key != "" {
 		headers["Authorization"] = "Bearer " + key
@@ -187,9 +189,9 @@ func (p openaiProvider) complete(ctx context.Context, prompt string) (string, in
 		"response_format": map[string]any{
 			"type": "json_schema",
 			"json_schema": map[string]any{
-				"name":   "findings",
+				"name":   "answer",
 				"strict": true,
-				"schema": findingsSchema(),
+				"schema": schema,
 			},
 		},
 	}, &out)
@@ -222,12 +224,12 @@ func (p claudeProvider) countTokens(_ context.Context, prompt string) (int64, er
 	return int64(len(prompt) / 4), nil
 }
 
-func (p claudeProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
-	schema, _ := json.Marshal(findingsSchema())
+func (p claudeProvider) complete(ctx context.Context, prompt string, schema map[string]any) (string, int64, int64, error) {
+	schemaJSON, _ := json.Marshal(schema)
 	// The prompt goes on stdin: a large diff does not fit in an argument.
 	// No tools and no MCP servers: the model must judge only the prompt.
 	cmd := exec.CommandContext(ctx, "claude", "-p", "--output-format", "json",
-		"--model", p.cfg.Model, "--json-schema", string(schema),
+		"--model", p.cfg.Model, "--json-schema", string(schemaJSON),
 		"--tools", "", "--strict-mcp-config")
 	cmd.Stdin = strings.NewReader(prompt)
 	// The command must use its own login. An API key in the environment
@@ -279,7 +281,7 @@ func (p copilotProvider) countTokens(_ context.Context, prompt string) (int64, e
 	return int64(len(prompt) / 4), nil
 }
 
-func (p copilotProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
+func (p copilotProvider) complete(ctx context.Context, prompt string, _ map[string]any) (string, int64, int64, error) {
 	// The prompt goes on stdin: the command reads stdin as the prompt when
 	// stdin is not a terminal. No tools and no MCP servers: the model must
 	// judge only the prompt.

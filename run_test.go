@@ -109,7 +109,7 @@ func TestOpenAIProvider(t *testing.T) {
 	defer srv.Close()
 	t.Setenv("OPENAI_API_KEY", "k")
 	p := openaiProvider{cfg: Config{Model: "m", BaseURL: srv.URL + "/v1/", APIKeyEnv: "OPENAI_API_KEY", MaxOutputTokens: 9}}
-	text, in, out, err := p.complete(context.Background(), "hello")
+	text, in, out, err := p.complete(context.Background(), "hello", findingsSchema())
 	if err != nil || text != `{"results":[]}` || in != 7 || out != 3 {
 		t.Fatalf("got %q %d %d %v", text, in, out, err)
 	}
@@ -140,7 +140,7 @@ func TestAnthropicProvider(t *testing.T) {
 	if n, err := p.countTokens(context.Background(), "hello"); err != nil || n != 5 {
 		t.Fatalf("count: got %d %v", n, err)
 	}
-	text, in, out, err := p.complete(context.Background(), "hello")
+	text, in, out, err := p.complete(context.Background(), "hello", findingsSchema())
 	if err != nil || text != `{"results":[]}` || in != 7 || out != 3 {
 		t.Fatalf("got %q %d %d %v", text, in, out, err)
 	}
@@ -159,7 +159,7 @@ func TestClaudeProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, in, out, err := p.complete(context.Background(), "hello")
+	text, in, out, err := p.complete(context.Background(), "hello", findingsSchema())
 	if err != nil || text != `{"results":[]}` || in != 7 || out != 3 {
 		t.Fatalf("got %q %d %d %v", text, in, out, err)
 	}
@@ -180,7 +180,7 @@ func TestCopilotProvider(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, in, out, err := p.complete(context.Background(), "hello")
+	text, in, out, err := p.complete(context.Background(), "hello", findingsSchema())
 	if err != nil || text != "{\"results\":[]}\n" || in != 1 || out != 3 {
 		t.Fatalf("got %q %d %d %v", text, in, out, err)
 	}
@@ -195,7 +195,7 @@ func TestCopilotProvider(t *testing.T) {
 type fakeProvider struct{}
 
 func (fakeProvider) countTokens(context.Context, string) (int64, error) { return 1, nil }
-func (fakeProvider) complete(context.Context, string) (string, int64, int64, error) {
+func (fakeProvider) complete(context.Context, string, map[string]any) (string, int64, int64, error) {
 	return `{"results":[{"id":"aaaa0001","pass":true,"reason":"ok","files":[]}]}`, 7, 3, nil
 }
 
@@ -215,5 +215,19 @@ func TestAskPerRuleTokens(t *testing.T) {
 	report, _ = ask(context.Background(), fakeProvider{}, cfg, testRules, Scope{}, "+x")
 	if tokensNote(report.Findings[0]) != "" {
 		t.Errorf("shared request got per-rule tokens: %+v", report.Findings[0])
+	}
+}
+
+func TestDraft(t *testing.T) {
+	got := draftPrompt(Draft{Title: "No prints"})
+	if !strings.Contains(got, "<title>No prints</title>") || !strings.Contains(got, "<rule></rule>") {
+		t.Errorf("prompt lacks the fields: %s", got)
+	}
+	d, err := parseDraft("Here:\n```json\n{\"title\":\"No prints\",\"rule\":\"Use the logger.\",\"why\":\"Logs have levels.\"}\n```")
+	if err != nil || d.Rule != "Use the logger." || d.Why != "Logs have levels." {
+		t.Errorf("parseDraft: %+v %v", d, err)
+	}
+	if _, err := parseDraft("not json"); err == nil {
+		t.Error("expected an error for a non-JSON answer")
 	}
 }

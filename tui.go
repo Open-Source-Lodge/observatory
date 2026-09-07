@@ -25,7 +25,7 @@ var (
 
 const (
 	listHelp   = "↑↓ move · n new · e editor · d delete · s scope · r run · R run all · ctrl+r refresh · q quit"
-	newHelp    = "tab next field · enter create · esc cancel"
+	newHelp    = "tab next field · ctrl+g fill the empty fields · enter create · esc cancel"
 	deleteHelp = "y delete · esc cancel"
 	reportHelp = "esc back · q quit"
 	busyHelp   = "in progress · ctrl+c quit"
@@ -59,6 +59,15 @@ type rulesMsg struct {
 type doneMsg struct {
 	text string
 	err  error
+}
+
+// draftMsg is the draft the model wrote for the new rule.
+type draftMsg struct {
+	draft Draft
+	model string
+	in    int64
+	out   int64
+	err   error
 }
 
 type reportMsg struct {
@@ -126,6 +135,15 @@ func createCmd(dir, title, text, explain string) tea.Cmd {
 	}
 }
 
+// draftCmd asks the model to write the empty fields of the new rule.
+func draftCmd(dir string, d Draft) tea.Cmd {
+	return func() tea.Msg {
+		cfg := loadConfig(dir)
+		d, in, out, err := draft(context.Background(), cfg, d)
+		return draftMsg{draft: d, model: cfg.Model, in: in, out: out, err: err}
+	}
+}
+
 func deleteCmd(r Rule) tea.Cmd {
 	return func() tea.Msg {
 		if err := deleteRule(r); err != nil {
@@ -177,6 +195,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = ""
 		m.setMsg(msg.text, msg.err)
 		return m, m.loadRules
+
+	case draftMsg:
+		m.busy = ""
+		if msg.err != nil {
+			m.setMsg("", msg.err)
+			return m, nil
+		}
+		for i, v := range []string{msg.draft.Title, msg.draft.Rule, msg.draft.Why} {
+			m.inputs[i].SetValue(v)
+			m.inputs[i].CursorEnd()
+		}
+		m.setMsg(fmt.Sprintf("filled by %s, %d tokens in, %d out", msg.model, msg.in, msg.out), nil)
+		return m, nil
 
 	case reportMsg:
 		m.busy = ""
@@ -267,10 +298,20 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.busy != "" {
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
 	switch msg.String() {
 	case "esc", "ctrl+c":
 		m.mode = modeList
 		return m, nil
+	case "ctrl+g":
+		d := Draft{Title: m.inputs[0].Value(), Rule: m.inputs[1].Value(), Why: m.inputs[2].Value()}
+		m.setMsg("", nil)
+		return m.start("draft of the rule with the model", draftCmd(m.dir, d))
 	case "enter":
 		title := strings.TrimSpace(m.inputs[0].Value())
 		if title == "" {

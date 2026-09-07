@@ -217,6 +217,7 @@ Start `observatory` with no arguments to see the rules:
 | --------------- | --------------------------------------------------------------------------------- |
 | `↑` `↓` `k` `j` | move the selection                                                                |
 | `n`             | make a rule: type the title, the rule and the why                                 |
+| `ctrl+g`        | in the new rule form: the model writes the fields that are empty                  |
 | `e` `enter`     | open the directory of the rule in your editor                                     |
 | `d`             | delete the rule, after a confirmation                                             |
 | `s`             | change the scope: the last commit, the uncommitted changes, or every tracked file |
@@ -228,6 +229,10 @@ Start `observatory` with no arguments to see the rules:
 The `e` key looks for the editor in this sequence: `$OBSERVATORY_EDITOR`, then
 `$VISUAL`, then `$EDITOR`. The value is a command with arguments, such as
 `code -n`.
+
+In the new rule form, type the title, or the rule, or the why, then press
+`ctrl+g`. The model of the config writes the fields that are empty. Change the
+text, then press `enter` to make the rule.
 
 ## GitHub Actions
 
