@@ -184,22 +184,24 @@ func findingsSchema() map[string]any {
 
 // parseFindings reads the answer and returns one finding per rule, in rule
 // order. A rule the model did not answer for fails, so that a silent miss
-// cannot pass a check.
+// cannot pass a check. An answer with no verdict at all is an error that
+// shows the answer.
 func parseFindings(text string, rules []Rule) ([]Finding, error) {
-	var out struct {
-		Results []Finding `json:"results"`
-	}
-	// A model without a JSON schema can wrap the answer in a code fence, or
-	// add text around it. Decode the first JSON object and ignore the rest.
-	if i := strings.Index(text, "{"); i > 0 {
+	// A model without a JSON schema can wrap the answer in a code fence, add
+	// text around it, or leave out the {"results": ...} wrapper. Decode the
+	// first JSON value and collect every object in it that has an id and a
+	// pass.
+	if i := strings.IndexAny(text, "{["); i > 0 {
 		text = text[i:]
 	}
-	if err := json.NewDecoder(strings.NewReader(text)).Decode(&out); err != nil {
-		return nil, fmt.Errorf("the model did not answer with JSON: %w", err)
+	var value any
+	if err := json.NewDecoder(strings.NewReader(text)).Decode(&value); err != nil {
+		return nil, fmt.Errorf("the model did not answer with JSON: %w: %s", err, snippet(text))
 	}
-	byID := make(map[string]Finding, len(out.Results))
-	for _, f := range out.Results {
-		byID[f.ID] = f
+	byID := map[string]Finding{}
+	collectFindings(value, byID)
+	if len(byID) == 0 {
+		return nil, errors.New("the model gave no verdict: " + snippet(text))
 	}
 	findings := make([]Finding, len(rules))
 	for i, r := range rules {
@@ -210,4 +212,38 @@ func parseFindings(text string, rules []Rule) ([]Finding, error) {
 		findings[i] = f
 	}
 	return findings, nil
+}
+
+// collectFindings walks a decoded JSON value and puts every object with a
+// string id and a boolean pass into byID.
+func collectFindings(value any, byID map[string]Finding) {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			collectFindings(item, byID)
+		}
+	case map[string]any:
+		id, hasID := v["id"].(string)
+		_, hasPass := v["pass"].(bool)
+		if hasID && hasPass {
+			var f Finding
+			data, _ := json.Marshal(v)
+			if json.Unmarshal(data, &f) == nil {
+				byID[id] = f
+			}
+			return
+		}
+		for _, item := range v {
+			collectFindings(item, byID)
+		}
+	}
+}
+
+// snippet is the start of an answer, for an error message.
+func snippet(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) > 300 {
+		text = text[:300] + "..."
+	}
+	return text
 }

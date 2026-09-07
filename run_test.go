@@ -49,8 +49,20 @@ func TestParseFindings(t *testing.T) {
 	if !(Report{Findings: got}).Failed() {
 		t.Error("report with a failure reports no failure")
 	}
-	if got, err := parseFindings("Here it is:\n```json\n{\"results\":[]}\n```\nDone {see above}.", testRules); err != nil || len(got) != len(testRules) {
-		t.Errorf("fenced JSON: %v %v", got, err)
+	one := `{"id":"aaaa0001","pass":true,"reason":"ok","files":[]}`
+	for name, answer := range map[string]string{
+		"fenced":     "Here it is:\n```json\n{\"results\":[" + one + "]}\n```\nDone {see above}.",
+		"bare array": "[" + one + "]",
+		"one object": one,
+		"other key":  `{"verdicts":{"first":` + one + `}}`,
+	} {
+		got, err := parseFindings(answer, testRules)
+		if err != nil || len(got) != 2 || !got[0].Pass || got[1].Pass {
+			t.Errorf("%s: %v %v", name, got, err)
+		}
+	}
+	if _, err := parseFindings(`{"results":[]}`, testRules); err == nil || !strings.Contains(err.Error(), `{"results":[]}`) {
+		t.Errorf("an answer with no verdict must be an error that shows the answer, got %v", err)
 	}
 	if _, err := parseFindings("not json", testRules); err == nil {
 		t.Error("expected an error for a non-JSON answer")
