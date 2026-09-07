@@ -1,16 +1,14 @@
 # observatory
 
-Observatory is a testing system that uses LLMs to make sure that your
+Observatory is a test system that uses LLMs to make sure that your
 repository, code, product or service obeys your rules. It behaves as a linter
-that can check rules on a higher level, including rules that are harder to
-write as code.
+that can check rules that are can be hard, or even impossible, to write as code.
 
 You write the rules in plain language. A rule can be "use httpx for every HTTP
 call" or "each public function has a docstring". Observatory sends the rules
 and the changes to the model, and the model gives a verdict for each rule.
-Think of it as `pytest` for the rules that a linter cannot express.
 
-Observatory is a command line tool with a terminal user interface. It runs on
+Observatory has a command line tool and a terminal user interface. It runs on
 your machine, or in a GitHub Actions workflow.
 
 ## Install
@@ -82,15 +80,19 @@ observatory add Use httpx for HTTP calls
 ### run
 
 The `observatory run` command sends the rules and the changes to the model.
-It prints one line per rule, and the number of tokens the run used. The exit
-code is 1 when a rule fails, so a workflow step fails too:
+It prints the model, one line per rule, and the number of tokens the run
+used. The exit code is 1 when a rule fails, so a workflow step fails too:
 
 ```
+model: claude-sonnet-4-5
 checked the commit HEAD
 PASS  OBS-001  No file in the diff makes an HTTP call.
 FAIL  OBS-002  src/api.py line 12 adds `print(response)`; the rule asks for the logger.
 tokens: 2310 in, 96 out
 ```
+
+When `per_rule` is `true`, each rule line also shows the tokens of its own
+request, as `(1150 in, 40 out)`.
 
 The scope says which changes the model reads:
 

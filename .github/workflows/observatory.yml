@@ -19,7 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: npm install -g @github/copilot
-      - run: go run . run
+      # Check the changes between the base branch of the pull request and
+      # the pull request head.
+      - run: go run . run --base origin/${{ github.base_ref }}
         env:
           # A fine-grained personal access token with the "Copilot Requests" permission.
           # The token uses the Copilot subscription of its owner, not of the organization.

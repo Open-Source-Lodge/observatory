@@ -14,11 +14,16 @@ type Finding struct {
 	Pass   bool     `json:"pass"`
 	Reason string   `json:"reason"`
 	Files  []string `json:"files"`
+	// InputTokens and OutputTokens are what this rule cost. They are set
+	// only when the rule had its own request (per_rule).
+	InputTokens  int64 `json:"-"`
+	OutputTokens int64 `json:"-"`
 }
 
 // Report is the outcome of one run.
 type Report struct {
 	Scope    string
+	Model    string
 	Findings []Finding
 	// InputTokens and OutputTokens are what the run cost.
 	InputTokens  int64
@@ -51,7 +56,7 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	if !cfg.PerRule {
 		return ask(ctx, p, cfg, rules, scope, diff)
 	}
-	report := Report{Scope: scope.String()}
+	report := Report{Scope: scope.String(), Model: cfg.Model}
 	for _, r := range rules {
 		one, err := ask(ctx, p, cfg, []Rule{r}, scope, diff)
 		if err != nil {
@@ -67,7 +72,7 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 // ask sends rules and the changes to the provider in one request and reads
 // back one finding per rule.
 func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope, diff string) (Report, error) {
-	report := Report{Scope: scope.String()}
+	report := Report{Scope: scope.String(), Model: cfg.Model}
 	text := prompt(rules, scope, diff)
 	count, err := p.countTokens(ctx, text)
 	if err != nil {
@@ -83,6 +88,9 @@ func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope,
 	}
 	report.InputTokens, report.OutputTokens = in, out
 	report.Findings, err = parseFindings(answer, rules)
+	if len(rules) == 1 && len(report.Findings) == 1 {
+		report.Findings[0].InputTokens, report.Findings[0].OutputTokens = in, out
+	}
 	return report, err
 }
 

@@ -105,13 +105,14 @@ func runCheck(ctx context.Context, scope Scope) (Report, error) {
 // printReport writes one line per rule, and the cost. In GitHub Actions it
 // also writes an annotation per failure, so the failure shows on the file.
 func printReport(r Report) {
+	fmt.Println("model: " + r.Model)
 	fmt.Println("checked " + r.Scope)
 	for _, f := range r.Findings {
 		mark := "PASS"
 		if !f.Pass {
 			mark = "FAIL"
 		}
-		fmt.Printf("%s  %s  %s\n", mark, f.ID, f.Reason)
+		fmt.Printf("%s  %s  %s%s\n", mark, f.ID, f.Reason, tokensNote(f))
 		if !f.Pass && os.Getenv("GITHUB_ACTIONS") != "" {
 			file := ""
 			if len(f.Files) > 0 {
@@ -121,6 +122,15 @@ func printReport(r Report) {
 		}
 	}
 	fmt.Printf("tokens: %d in, %d out\n", r.InputTokens, r.OutputTokens)
+}
+
+// tokensNote is the cost of one rule, or empty when the rule shared its
+// request with the other rules.
+func tokensNote(f Finding) string {
+	if f.InputTokens == 0 && f.OutputTokens == 0 {
+		return ""
+	}
+	return fmt.Sprintf("  (%d in, %d out)", f.InputTokens, f.OutputTokens)
 }
 
 func cmdDoctor(args []string) error {

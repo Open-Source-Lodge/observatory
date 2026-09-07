@@ -144,3 +144,29 @@ func TestCopilotProvider(t *testing.T) {
 		t.Errorf("args: %q", got)
 	}
 }
+
+type fakeProvider struct{}
+
+func (fakeProvider) countTokens(context.Context, string) (int64, error) { return 1, nil }
+func (fakeProvider) complete(context.Context, string) (string, int64, int64, error) {
+	return `{"results":[{"id":"aaaa0001","pass":true,"reason":"ok","files":[]}]}`, 7, 3, nil
+}
+
+func TestAskPerRuleTokens(t *testing.T) {
+	cfg := Config{Model: "m", MaxTokens: 100}
+	report, err := ask(context.Background(), fakeProvider{}, cfg, testRules[:1], Scope{}, "+x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Model != "m" || report.InputTokens != 7 || report.OutputTokens != 3 {
+		t.Errorf("report: %+v", report)
+	}
+	if got := tokensNote(report.Findings[0]); got != "  (7 in, 3 out)" {
+		t.Errorf("tokensNote = %q", got)
+	}
+	// Two rules share one request: no per-rule tokens.
+	report, _ = ask(context.Background(), fakeProvider{}, cfg, testRules, Scope{}, "+x")
+	if tokensNote(report.Findings[0]) != "" {
+		t.Errorf("shared request got per-rule tokens: %+v", report.Findings[0])
+	}
+}

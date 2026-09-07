@@ -399,13 +399,13 @@ func (m model) viewNew(b *strings.Builder) {
 }
 
 func (m model) viewReport(b *strings.Builder) {
-	b.WriteString("  " + titleStyle.Render("Checked "+m.report.Scope) + "\n\n")
+	b.WriteString("  " + titleStyle.Render("Checked "+m.report.Scope) + dimStyle.Render(" · "+m.report.Model) + "\n\n")
 	for _, f := range m.report.Findings {
 		mark := okStyle.Render("PASS")
 		if !f.Pass {
 			mark = errStyle.Render("FAIL")
 		}
-		b.WriteString(fmt.Sprintf("  %s  %s  %s\n", mark, dimStyle.Render(f.ID), f.Reason))
+		b.WriteString(fmt.Sprintf("  %s  %s  %s%s\n", mark, dimStyle.Render(f.ID), f.Reason, dimStyle.Render(tokensNote(f))))
 	}
 	b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("tokens: %d in, %d out", m.report.InputTokens, m.report.OutputTokens))))
 }
