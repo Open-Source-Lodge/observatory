@@ -31,7 +31,7 @@ func (r Rule) Summary() string {
 }
 
 // loadRules reads every `<dir>/<id>/rule.md`, sorted by ID. A directory
-// without a rule.md is not a rule and is skipped.
+// without a rule.md is not a rule, and loadRules ignores it.
 func loadRules(dir string) ([]Rule, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -123,7 +123,7 @@ func newID(dir string) (string, error) {
 // deleteRule removes the directory of the rule.
 func deleteRule(r Rule) error {
 	if r.Dir == "" || r.ID == "" {
-		return errors.New("refusing to delete a rule without a directory")
+		return errors.New("the rule has no directory, so there is nothing to delete")
 	}
 	return os.RemoveAll(r.Dir)
 }

@@ -20,7 +20,7 @@ Then change the text so that it matches your repository.
 | `docstrings`          | each public function has documentation          |
 | `tests`               | a change to the code comes with a test          |
 | `secrets`             | no credentials in the repository                |
-| `error-handling`      | errors are not ignored                          |
+| `error-handling`      | each error has a handler                        |
 | `database-migrations` | a schema change comes with a migration          |
 | `public-api`          | a change to the public API is backward compatible |
 | `rate-limiting`       | each call to an external service has a rate limit |

@@ -76,6 +76,6 @@ func version() string {
 	return "unknown"
 }
 
-// versionOverride is set with ldflags in the release workflow, because a
+// The release workflow sets versionOverride with ldflags, because a
 // binary that a workflow builds from a checkout has no module version.
 var versionOverride string

@@ -1,3 +1,3 @@
-# Readme should be up-to-date
+# Keep the readme up to date
 
-The readme should always be up-to-date with how the code behaves
+The readme always says what the code does.

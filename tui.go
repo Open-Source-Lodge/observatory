@@ -28,7 +28,7 @@ const (
 	newHelp    = "tab next field · enter create · esc cancel"
 	deleteHelp = "y delete · esc cancel"
 	reportHelp = "esc back · q quit"
-	busyHelp   = "working · ctrl+c quit"
+	busyHelp   = "in progress · ctrl+c quit"
 )
 
 type mode int
@@ -243,7 +243,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		if r, ok := m.selected(); ok {
 			m.setMsg("", nil)
-			return m.start("checking "+scopes[m.scope].name+" against rule "+r.ID, runCmd(scopes[m.scope].scope, []Rule{r}))
+			return m.start("check of "+scopes[m.scope].name+" against rule "+r.ID, runCmd(scopes[m.scope].scope, []Rule{r}))
 		}
 	case "n":
 		m.mode, m.focus, m.inputs = modeNew, 0, newInputs()
@@ -261,7 +261,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "R":
 		m.setMsg("", nil)
-		return m.start("checking "+scopes[m.scope].name+" against every rule", runCmd(scopes[m.scope].scope, nil))
+		return m.start("check of "+scopes[m.scope].name+" against every rule", runCmd(scopes[m.scope].scope, nil))
 	}
 	return m, nil
 }
@@ -277,7 +277,7 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = modeList
-		return m.start("making "+title, createCmd(m.dir, title, m.inputs[1].Value(), m.inputs[2].Value()))
+		return m.start("new rule "+title, createCmd(m.dir, title, m.inputs[1].Value(), m.inputs[2].Value()))
 	case "tab", "down", "shift+tab", "up":
 		if msg.String() == "tab" || msg.String() == "down" {
 			m.focus = (m.focus + 1) % len(m.inputs)
@@ -311,7 +311,7 @@ func (m model) updateDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "enter":
 		m.mode = modeList
-		return m.start("deleting "+r.ID, deleteCmd(r))
+		return m.start("delete of "+r.ID, deleteCmd(r))
 	case "esc", "n", "q", "ctrl+c":
 		m.mode = modeList
 	}

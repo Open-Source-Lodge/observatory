@@ -1,8 +1,8 @@
 # observatory
 
 Observatory is a test system that uses LLMs to make sure that your
-repository, code, product or service obeys your rules. It behaves as a linter
-that can check rules that are can be hard, or even impossible, to write as code.
+repository, code, product or service obeys your rules. It is a linter for
+rules that are hard, or not possible, to write as code.
 
 You write the rules in plain language. A rule can be "use httpx for every HTTP
 call" or "each public function has a docstring". Observatory sends the rules
@@ -151,7 +151,8 @@ environment variable wins over the config file.
 ### Providers
 
 The `anthropic` provider is the default. It uses the Anthropic API with the
-key in `ANTHROPIC_API_KEY`.
+key in `ANTHROPIC_API_KEY`. If that variable is empty, it uses the OAuth token
+in `ANTHROPIC_AUTH_TOKEN`.
 
 The `openai` provider sends a chat completions request to `base_url`. OpenAI,
 Ollama, OpenRouter and Groq all accept this request. The provider reads the
@@ -297,8 +298,8 @@ make lint
 Write all documentation in this repository in ASD-STE100 Simplified Technical
 English. These are the primary rules:
 
-- Use the words from the STE dictionary. Technical names, such as `rule`,
-  `commit` and `token`, are permitted.
+- Use the words from the STE dictionary. You can use technical names, such as
+  `rule`, `commit` and `token`.
 - Give one meaning to each word. Do not use a word as a noun and as a verb.
 - Use the same word for the same thing in all the documents.
 - Write short sentences. Use a maximum of 20 words in an instruction, and a

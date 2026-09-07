@@ -149,7 +149,7 @@ func cmdDoctor(args []string) error {
 		fmt.Printf("✓ %s\n", name)
 	}
 	_, err := exec.LookPath("git")
-	report("git is installed", err)
+	report("the git command", err)
 	dir, err := rulesDir()
 	report("inside a git repository", err)
 	if err == nil {
@@ -168,7 +168,7 @@ func cmdDoctor(args []string) error {
 	case cfg.Provider == "claude", cfg.Provider == "copilot":
 		// The command holds its own login.
 	case os.Getenv(cfg.APIKeyEnv) == "" && (cfg.Provider != "anthropic" || os.Getenv("ANTHROPIC_AUTH_TOKEN") == ""):
-		report("API credentials", errors.New(cfg.APIKeyEnv+" is not set"))
+		report("API credentials", errors.New(cfg.APIKeyEnv+" is empty"))
 	default:
 		report("API credentials", nil)
 	}

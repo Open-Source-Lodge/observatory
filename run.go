@@ -42,8 +42,8 @@ type Finding struct {
 	Pass   bool     `json:"pass"`
 	Reason string   `json:"reason"`
 	Files  []string `json:"files"`
-	// InputTokens and OutputTokens are what this rule cost. They are set
-	// only when the rule had its own request (per_rule).
+	// InputTokens and OutputTokens are what this rule cost. They have a
+	// value only when the rule had its own request (per_rule).
 	InputTokens  int64 `json:"-"`
 	OutputTokens int64 `json:"-"`
 }
@@ -81,7 +81,7 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	if err != nil {
 		return Report{}, err
 	}
-	head := fmt.Sprintf("checking %s with %s %s", scope, cfg.Provider, cfg.Model)
+	head := fmt.Sprintf("check of %s with %s %s", scope, cfg.Provider, cfg.Model)
 	if !cfg.PerRule {
 		stop := status(head + ", " + rulesLabel(rules))
 		defer stop()

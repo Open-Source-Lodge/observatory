@@ -1,3 +1,3 @@
-# Readme should be up-to-date
+# Keep the readme up to date
 
-If there is a mismatch between what the readme says, and what the code does, it will be very confusing to the user.
+If the readme and the code do not agree, the user does not know what the program does. A change to the behavior of the code also changes the readme.

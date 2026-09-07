@@ -148,8 +148,8 @@ func (p anthropicProvider) complete(ctx context.Context, prompt string) (string,
 	return text.String(), in, used, nil
 }
 
-// openaiProvider uses a chat completions endpoint: OpenAI, Ollama, OpenRouter
-// and most others speak it.
+// openaiProvider uses a chat completions endpoint. OpenAI, Ollama, OpenRouter
+// and most other APIs have one.
 type openaiProvider struct {
 	cfg Config
 }

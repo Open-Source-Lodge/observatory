@@ -18,4 +18,4 @@ GitHub release, and the binaries.
 ## Open questions
 
 - Homebrew tap or a `curl | sh` installer: skip until somebody asks.
-- Should the action pin its own version in a test workflow of this repository, to dogfood `OBS-001` on each pull request? Cheap to add, and it needs the API key as a repository secret.
+- Should the action pin its own version in a test workflow of this repository, to check `OBS-001` on each pull request of this repository? Cheap to add, and it needs the API key as a repository secret.
