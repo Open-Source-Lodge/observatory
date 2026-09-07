@@ -23,7 +23,7 @@ var (
 )
 
 const (
-	listHelp   = "↑↓ move · n new · e editor · d delete · R run · r refresh · q quit"
+	listHelp   = "↑↓ move · n new · e editor · d delete · r run · R run all · ctrl+r refresh · q quit"
 	newHelp    = "tab next field · enter create · esc cancel"
 	deleteHelp = "y delete · esc cancel"
 	reportHelp = "esc back · q quit"
@@ -123,9 +123,12 @@ func deleteCmd(r Rule) tea.Cmd {
 	}
 }
 
-func runCmd() tea.Msg {
-	report, err := runCheck(context.Background(), Scope{})
-	return reportMsg{report: report, err: err}
+// runCmd checks the last commit against rules; nil means every rule.
+func runCmd(rules []Rule) tea.Cmd {
+	return func() tea.Msg {
+		report, err := runCheck(context.Background(), Scope{}, rules)
+		return reportMsg{report: report, err: err}
+	}
 }
 
 // editorCmd opens the directory of the rule in the editor. A terminal editor
@@ -219,9 +222,14 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "end", "G":
 		m.cursor = max(0, len(m.rules)-1)
-	case "r":
+	case "ctrl+r":
 		m.setMsg("", nil)
 		return m, m.loadRules
+	case "r":
+		if r, ok := m.selected(); ok {
+			m.setMsg("", nil)
+			return m.start("checking the changes against rule "+r.ID, runCmd([]Rule{r}))
+		}
 	case "n":
 		m.mode, m.focus, m.inputs = modeNew, 0, newInputs()
 		m.setMsg("", nil)
@@ -238,7 +246,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "R":
 		m.setMsg("", nil)
-		return m.start("checking the changes against the rules", runCmd)
+		return m.start("checking the changes against every rule", runCmd(nil))
 	}
 	return m, nil
 }

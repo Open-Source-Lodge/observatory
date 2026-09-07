@@ -209,7 +209,7 @@ Start `observatory` with no arguments to see the rules:
 ❯ OBS-001  Use httpx for HTTP calls  Every HTTP call goes through httpx.
   OBS-002  No print statements       Use the logger, not print.
 
-  ↑↓ move · n new · e editor · d delete · R run · r refresh · q quit
+  ↑↓ move · n new · e editor · d delete · r run · R run all · ctrl+r refresh · q quit
 ```
 
 | key             | operation                                         |
@@ -218,8 +218,9 @@ Start `observatory` with no arguments to see the rules:
 | `n`             | make a rule: type the title, the rule and the why |
 | `e` `enter`     | open the directory of the rule in your editor     |
 | `d`             | delete the rule, after a confirmation             |
-| `R`             | check the last commit                             |
-| `r`             | read the rules again                              |
+| `r`             | check the last commit against the selected rule   |
+| `R`             | check the last commit against every rule          |
+| `ctrl+r`        | read the rules again                              |
 | `q` `esc`       | stop observatory                                  |
 
 The `e` key looks for the editor in this sequence: `$OBSERVATORY_EDITOR`, then

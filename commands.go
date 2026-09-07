@@ -74,7 +74,7 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	report, err := runCheck(context.Background(), scope)
+	report, err := runCheck(context.Background(), scope, nil)
 	if err != nil {
 		return err
 	}
@@ -85,15 +85,17 @@ func cmdRun(args []string) error {
 	return nil
 }
 
-// runCheck loads the rules and the changes, and asks the model.
-func runCheck(ctx context.Context, scope Scope) (Report, error) {
+// runCheck loads the changes and asks the model about rules. A nil rules
+// loads every rule.
+func runCheck(ctx context.Context, scope Scope, rules []Rule) (Report, error) {
 	dir, err := rulesDir()
 	if err != nil {
 		return Report{}, err
 	}
-	rules, err := loadRules(dir)
-	if err != nil {
-		return Report{}, err
+	if rules == nil {
+		if rules, err = loadRules(dir); err != nil {
+			return Report{}, err
+		}
 	}
 	diff, err := changes(&scope)
 	if err != nil {
