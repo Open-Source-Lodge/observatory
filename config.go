@@ -13,8 +13,9 @@ const rulesDirName = ".observatory"
 // Config is the content of `.observatory/config`. Every key has a default,
 // so a repo without a config file still runs.
 type Config struct {
-	// Provider is the API that checks the rules: "anthropic", "openai", or
-	// "claude" for the Claude Code command and its login.
+	// Provider is the API that checks the rules: "anthropic", "openai",
+	// "claude" for the Claude Code command and its login, or "copilot" for
+	// the GitHub Copilot CLI command and its login.
 	Provider string
 	// Model is the model that checks the rules.
 	Model string
@@ -41,7 +42,8 @@ const configTemplate = `# observatory settings for this repo — check this file
 # An environment variable OBSERVATORY_<KEY> in upper case replaces a key, for example OBSERVATORY_MODEL.
 
 # The API that checks the rules: "anthropic", "openai" for every chat completions endpoint,
-# or "claude" for the Claude Code command and the login of your Claude subscription.
+# "claude" for the Claude Code command and the login of your Claude subscription,
+# or "copilot" for the GitHub Copilot CLI command and the login of your GitHub account.
 provider = "anthropic"
 
 # The model that checks the rules.

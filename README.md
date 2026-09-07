@@ -21,7 +21,8 @@ go install github.com/Open-Source-Lodge/observatory@latest
 ```
 
 Observatory needs `git`, and an Anthropic API key in `ANTHROPIC_API_KEY`. See
-"Providers" for the other APIs.
+"Providers" for the other APIs and for the Claude Code and GitHub Copilot
+commands.
 
 ## Commands
 
@@ -127,7 +128,7 @@ per_rule = false
 
 | key                 | meaning                                                                           |
 | ------------------- | --------------------------------------------------------------------------------- |
-| `provider`          | the API that checks the rules: `anthropic`, `openai` or `claude`                  |
+| `provider`          | the API that checks the rules: `anthropic`, `openai`, `claude` or `copilot`       |
 | `model`             | the model that checks the rules                                                   |
 | `base_url`          | the URL of the API; empty is the default of the provider                          |
 | `api_key_env`       | the environment variable that holds the API key; empty is `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` |
@@ -174,6 +175,22 @@ model = "opus"
 The provider runs `claude -p` with no tools and no MCP servers, and estimates
 the tokens as the `openai` provider does. The `max_output_tokens` key has no
 effect on this provider.
+
+The `copilot` provider runs the `copilot` command of the GitHub Copilot CLI.
+The command uses its own login, so a GitHub Copilot subscription works
+without an API key. Install the command with `npm install -g @github/copilot`,
+log in once with `copilot login`, then set the provider:
+
+```toml
+provider = "copilot"
+model = "auto"
+```
+
+The `model` is a name that Copilot knows, such as `gpt-5.4` or
+`claude-sonnet-4.5`. The value `auto` lets Copilot select the model. The
+provider runs `copilot` with no tools and no MCP servers. The command reports
+no token counts, so the `tokens` line shows an estimate. The `max_output_tokens`
+key has no effect on this provider.
 
 ## Interactive mode
 
@@ -224,6 +241,39 @@ jobs:
 
 A failed rule fails the job. Observatory also writes an annotation for each
 failed rule, so the failure shows on the file in the pull request.
+
+The `copilot` provider has two ways to log in from GitHub Actions. A
+fine-grained personal access token with the "Copilot Requests" permission,
+in the secret `COPILOT_GITHUB_TOKEN`, uses the Copilot subscription of its
+owner. The token of the workflow, `GITHUB_TOKEN`, uses the Copilot Business
+subscription of the organization instead. For `GITHUB_TOKEN`, the organization
+must permit the Copilot CLI to use it. See the [GitHub documentation](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions)
+for the policy. Install the `copilot` command in a step before the action:
+
+```yaml
+name: observatory
+on:
+  pull_request:
+permissions:
+  contents: read
+  copilot-requests: write
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: npm install -g @github/copilot
+      - uses: Open-Source-Lodge/observatory@main
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }} # or GITHUB_TOKEN: ${{ github.token }}
+          OBSERVATORY_PROVIDER: copilot
+          OBSERVATORY_MODEL: auto
+```
+
+This repository checks its own rules with this provider. See
+`.github/workflows/observatory.yml`.
 
 ## Development
 

@@ -135,7 +135,12 @@ func parseFindings(text string, rules []Rule) ([]Finding, error) {
 	var out struct {
 		Results []Finding `json:"results"`
 	}
-	if err := json.Unmarshal([]byte(text), &out); err != nil {
+	// A model without a JSON schema can wrap the answer in a code fence, or
+	// add text around it. Decode the first JSON object and ignore the rest.
+	if i := strings.Index(text, "{"); i > 0 {
+		text = text[i:]
+	}
+	if err := json.NewDecoder(strings.NewReader(text)).Decode(&out); err != nil {
 		return nil, fmt.Errorf("the model did not answer with JSON: %w", err)
 	}
 	byID := make(map[string]Finding, len(out.Results))
