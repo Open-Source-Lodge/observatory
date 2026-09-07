@@ -45,11 +45,11 @@ func dispatch(cmd string, args []string) error {
 	switch cmd {
 	case "init":
 		return cmdInit(args)
-	case "list", "ls":
+	case "list":
 		return cmdList(args)
-	case "add", "new":
+	case "add":
 		return cmdAdd(args)
-	case "run", "check":
+	case "run":
 		return cmdRun(args)
 	case "doctor":
 		return cmdDoctor(args)

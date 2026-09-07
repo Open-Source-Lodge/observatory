@@ -6,17 +6,6 @@ The same flow as forestry: release-please reads the commit messages, opens a
 release pull request, and a merge of that pull request makes the tag, the
 GitHub release, and the binaries.
 
-## Current state
-
-Copied from forestry, with the name changed:
-
-- `.github/workflows/release.yml`: `release-please` job, then a `binaries` job that builds for darwin and linux, amd64 and arm64, with `-X main.versionOverride=$TAG`.
-- `.github/workflows/test.yml`: lint and test on each pull request and each push to `main`.
-- `main.go`: `version()` reads the module version or `versionOverride`.
-- `DEVELOPMENT.md`: the Conventional Commits table.
-
-Nothing has run yet, because the repository has no commit.
-
 ## Steps
 
 1. First commit as `feat: first pass of observatory`, so that release-please starts at `v0.1.0`. Push to `main` on GitHub under `Open-Source-Lodge`.

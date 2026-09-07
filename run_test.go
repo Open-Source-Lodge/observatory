@@ -106,6 +106,37 @@ func TestOpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestAnthropicProvider(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "k" || r.Header.Get("anthropic-version") == "" {
+			t.Errorf("bad headers: %v", r.Header)
+		}
+		switch r.URL.Path {
+		case "/v1/messages/count_tokens":
+			w.Write([]byte(`{"input_tokens":5}`))
+		case "/v1/messages":
+			json.NewDecoder(r.Body).Decode(&got)
+			w.Write([]byte(`{"content":[{"type":"text","text":"{\"results\":[]}"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}`))
+		default:
+			t.Errorf("bad path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("ANTHROPIC_API_KEY", "k")
+	p := anthropicProvider{cfg: Config{Model: "m", BaseURL: srv.URL + "/", APIKeyEnv: "ANTHROPIC_API_KEY", MaxOutputTokens: 9}}
+	if n, err := p.countTokens(context.Background(), "hello"); err != nil || n != 5 {
+		t.Fatalf("count: got %d %v", n, err)
+	}
+	text, in, out, err := p.complete(context.Background(), "hello")
+	if err != nil || text != `{"results":[]}` || in != 7 || out != 3 {
+		t.Fatalf("got %q %d %d %v", text, in, out, err)
+	}
+	if got["model"] != "m" || got["max_tokens"] != 9.0 || got["output_config"] == nil {
+		t.Errorf("request body: %v", got)
+	}
+}
+
 func TestClaudeProvider(t *testing.T) {
 	dir := t.TempDir()
 	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "in") + "\necho \"${ANTHROPIC_API_KEY-unset}\" > " + filepath.Join(dir, "key") + "\necho '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ignored\",\"structured_output\":{\"results\":[]},\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":5,\"output_tokens\":3}}'\n"

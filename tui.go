@@ -67,8 +67,6 @@ type model struct {
 	busy    string
 	spinner spinner.Model
 	report  Report
-	width   int
-	height  int
 }
 
 func tui() error {
@@ -151,9 +149,6 @@ func editorCmd(r Rule) tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-
 	case rulesMsg:
 		m.rules = msg.rules
 		if msg.err != nil {

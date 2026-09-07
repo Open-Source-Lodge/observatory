@@ -315,3 +315,8 @@ English. These are the primary rules:
 
 Text in a code block shows the output of the program. Do not change that text
 in the documentation. Change the program first.
+
+## License
+
+Copyright (C) 2026 Stephan Nordnes Eriksen. Observatory is free software
+under the GNU AGPLv3. See `LICENSE`.

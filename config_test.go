@@ -19,7 +19,7 @@ per_rule = true
 `
 	os.WriteFile(filepath.Join(dir, "config"), []byte(content), 0o644)
 	got := loadConfig(dir)
-	want := Config{Provider: "anthropic", Model: "claude-sonnet-5", APIKeyEnv: "ANTHROPIC_API_KEY", MaxTokens: 50000, MaxOutputTokens: defaultConfig().MaxOutputTokens, PerRule: true}
+	want := Config{Provider: "anthropic", Model: "claude-sonnet-5", BaseURL: "https://api.anthropic.com", APIKeyEnv: "ANTHROPIC_API_KEY", MaxTokens: 50000, MaxOutputTokens: defaultConfig().MaxOutputTokens, PerRule: true}
 	if got != want {
 		t.Errorf("got %+v, want %+v", got, want)
 	}

@@ -19,9 +19,6 @@ type Rule struct {
 	Dir  string
 }
 
-// Explain is the path of the long-form explanation, meant for humans.
-func (r Rule) Explain() string { return filepath.Join(r.Dir, "explain.md") }
-
 // Summary is the first line of the rule after the title, for a list.
 func (r Rule) Summary() string {
 	for _, line := range strings.Split(r.Text, "\n") {
