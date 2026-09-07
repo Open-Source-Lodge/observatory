@@ -22,6 +22,8 @@ jobs:
       - run: npm install -g @github/copilot
       - run: go run . run
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          # A fine-grained personal access token with the "Copilot Requests" permission.
+          # The token uses the Copilot subscription of its owner, not of the organization.
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
           OBSERVATORY_PROVIDER: copilot
           OBSERVATORY_MODEL: auto

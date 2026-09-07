@@ -242,11 +242,13 @@ jobs:
 A failed rule fails the job. Observatory also writes an annotation for each
 failed rule, so the failure shows on the file in the pull request.
 
-The `copilot` provider works in GitHub Actions without a secret. The job uses
-the token of the workflow, `GITHUB_TOKEN`. The organization pays for the
-requests, and it must permit the Copilot CLI to use `GITHUB_TOKEN`. See the [GitHub documentation](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions)
-for the policy. Install the `copilot` command in a step before the action,
-and give the job the `copilot-requests` permission:
+The `copilot` provider has two ways to log in from GitHub Actions. A
+fine-grained personal access token with the "Copilot Requests" permission,
+in the secret `COPILOT_GITHUB_TOKEN`, uses the Copilot subscription of its
+owner. The token of the workflow, `GITHUB_TOKEN`, uses the Copilot Business
+subscription of the organization instead. For `GITHUB_TOKEN`, the organization
+must permit the Copilot CLI to use it. See the [GitHub documentation](https://docs.github.com/en/copilot/how-tos/copilot-cli/use-copilot-cli-in-actions)
+for the policy. Install the `copilot` command in a step before the action:
 
 ```yaml
 name: observatory
@@ -265,7 +267,7 @@ jobs:
       - run: npm install -g @github/copilot
       - uses: Open-Source-Lodge/observatory@main
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }} # or GITHUB_TOKEN: ${{ github.token }}
           OBSERVATORY_PROVIDER: copilot
           OBSERVATORY_MODEL: auto
 ```
