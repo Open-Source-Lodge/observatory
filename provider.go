@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -193,6 +194,12 @@ func (p claudeProvider) complete(ctx context.Context, prompt string) (string, in
 		"--tools", "", "--strict-mcp-config",
 		"--system-prompt", "You review changes to a code repository against the rules of that repository.")
 	cmd.Stdin = strings.NewReader(prompt)
+	// The command must use its own login. An API key in the environment
+	// takes precedence over the login, and a key the API rejects makes the
+	// command retry for minutes, which looks like a hang.
+	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		return strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") || strings.HasPrefix(kv, "ANTHROPIC_AUTH_TOKEN=")
+	})
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	data, err := cmd.Output()

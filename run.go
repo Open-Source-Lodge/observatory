@@ -5,8 +5,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 )
+
+// status writes progress to the terminal, so a slow request does not look
+// like a hang. The report goes to stdout; the status goes to stderr.
+var status = func(text string) { fmt.Fprintln(os.Stderr, text) }
 
 // Finding is the verdict of the model on one rule.
 type Finding struct {
@@ -53,11 +58,13 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	if err != nil {
 		return Report{}, err
 	}
+	status(fmt.Sprintf("checking %s with %s %s, %d rules ...", scope, cfg.Provider, cfg.Model, len(rules)))
 	if !cfg.PerRule {
 		return ask(ctx, p, cfg, rules, scope, diff)
 	}
 	report := Report{Scope: scope.String(), Model: cfg.Model}
 	for _, r := range rules {
+		status("rule " + r.ID + " ...")
 		one, err := ask(ctx, p, cfg, []Rule{r}, scope, diff)
 		if err != nil {
 			return report, fmt.Errorf("rule %s: %w", r.ID, err)

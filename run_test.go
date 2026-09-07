@@ -108,9 +108,10 @@ func TestOpenAIProvider(t *testing.T) {
 
 func TestClaudeProvider(t *testing.T) {
 	dir := t.TempDir()
-	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "in") + "\necho '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ignored\",\"structured_output\":{\"results\":[]},\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":5,\"output_tokens\":3}}'\n"
+	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "in") + "\necho \"${ANTHROPIC_API_KEY-unset}\" > " + filepath.Join(dir, "key") + "\necho '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ignored\",\"structured_output\":{\"results\":[]},\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":5,\"output_tokens\":3}}'\n"
 	os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("ANTHROPIC_API_KEY", "stale")
 	p, err := newProvider(Config{Provider: "claude", Model: "m"})
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +122,9 @@ func TestClaudeProvider(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "in")); string(got) != "hello" {
 		t.Errorf("stdin: %q", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "key")); string(got) != "unset\n" {
+		t.Errorf("the command got ANTHROPIC_API_KEY: %q", got)
 	}
 }
 

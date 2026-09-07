@@ -80,8 +80,10 @@ observatory add Use httpx for HTTP calls
 ### run
 
 The `observatory run` command sends the rules and the changes to the model.
-It prints the model, one line per rule, and the number of tokens the run
-used. The exit code is 1 when a rule fails, so a workflow step fails too:
+It writes a progress line to stderr before each request, so a slow model
+does not look like a hang. Then it prints the model, one line per rule, and
+the number of tokens the run used. The exit code is 1 when a rule fails, so
+a workflow step fails too:
 
 ```
 model: claude-sonnet-4-5
@@ -176,7 +178,9 @@ model = "opus"
 
 The provider runs `claude -p` with no tools and no MCP servers, and estimates
 the tokens as the `openai` provider does. The `max_output_tokens` key has no
-effect on this provider.
+effect on this provider. The provider removes `ANTHROPIC_API_KEY` and
+`ANTHROPIC_AUTH_TOKEN` from the environment of the command, so the command
+always uses its login. Use the `anthropic` provider to check with an API key.
 
 The `copilot` provider runs the `copilot` command of the GitHub Copilot CLI.
 The command uses its own login, so a GitHub Copilot subscription works
