@@ -76,7 +76,7 @@ func tui() error {
 	if err != nil {
 		return err
 	}
-	status = func(string) {} // the spinner shows the progress
+	status = func(string) func() { return func() {} } // the spinner of the screen shows the progress
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(cursorStyle))
 	_, err = tea.NewProgram(model{dir: dir, spinner: sp}, tea.WithAltScreen()).Run()
 	return err

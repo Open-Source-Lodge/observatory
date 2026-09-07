@@ -7,11 +7,34 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 )
 
-// status writes progress to the terminal, so a slow request does not look
-// like a hang. The report goes to stdout; the status goes to stderr.
-var status = func(text string) { fmt.Fprintln(os.Stderr, text) }
+// status shows progress on stderr while a request runs, so a slow model does
+// not look like a hang. A terminal gets a spinner with the elapsed time; a
+// log gets one line. The report goes to stdout. stop ends the spinner.
+var status = func(text string) (stop func()) {
+	if fi, err := os.Stderr.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		fmt.Fprintln(os.Stderr, text+" ...")
+		return func() {}
+	}
+	done, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(finished)
+		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+		start := time.Now()
+		for i := 0; ; i++ {
+			fmt.Fprintf(os.Stderr, "\r\033[K%c %s %ds", frames[i%len(frames)], text, int(time.Since(start).Seconds()))
+			select {
+			case <-done:
+				fmt.Fprint(os.Stderr, "\r\033[K")
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}()
+	return func() { close(done); <-finished }
+}
 
 // Finding is the verdict of the model on one rule.
 type Finding struct {
@@ -58,14 +81,17 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	if err != nil {
 		return Report{}, err
 	}
-	status(fmt.Sprintf("checking %s with %s %s, %d rules ...", scope, cfg.Provider, cfg.Model, len(rules)))
+	head := fmt.Sprintf("checking %s with %s %s", scope, cfg.Provider, cfg.Model)
 	if !cfg.PerRule {
+		stop := status(head + ", " + rulesLabel(rules))
+		defer stop()
 		return ask(ctx, p, cfg, rules, scope, diff)
 	}
 	report := Report{Scope: scope.String(), Model: cfg.Model}
-	for _, r := range rules {
-		status("rule " + r.ID + " ...")
+	for i, r := range rules {
+		stop := status(fmt.Sprintf("%s, %d/%d %s", head, i+1, len(rules), rulesLabel([]Rule{r})))
 		one, err := ask(ctx, p, cfg, []Rule{r}, scope, diff)
+		stop()
 		if err != nil {
 			return report, fmt.Errorf("rule %s: %w", r.ID, err)
 		}
@@ -74,6 +100,19 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 		report.OutputTokens += one.OutputTokens
 	}
 	return report, nil
+}
+
+// rulesLabel names the rules of a request: one rule with its title, or the
+// IDs of many.
+func rulesLabel(rules []Rule) string {
+	if len(rules) == 1 {
+		return "rule " + rules[0].ID + " " + rules[0].Title
+	}
+	ids := make([]string, len(rules))
+	for i, r := range rules {
+		ids[i] = r.ID
+	}
+	return fmt.Sprintf("%d rules %s", len(rules), strings.Join(ids, ", "))
 }
 
 // ask sends rules and the changes to the provider in one request and reads

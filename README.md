@@ -80,8 +80,9 @@ observatory add Use httpx for HTTP calls
 ### run
 
 The `observatory run` command sends the rules and the changes to the model.
-It writes a progress line to stderr before each request, so a slow model
-does not look like a hang. Then it prints the model, one line per rule, and
+While the model works, it shows a spinner on stderr with the scope, the
+provider, the model, the rule in progress and the elapsed time. A log without
+a terminal gets one line instead. Then it prints the model, one line per rule, and
 the number of tokens the run used. The exit code is 1 when a rule fails, so
 a workflow step fails too:
 
