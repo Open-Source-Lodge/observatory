@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  copilot-requests: write
 
 jobs:
   rules:
