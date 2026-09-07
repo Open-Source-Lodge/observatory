@@ -88,3 +88,49 @@ func TestChangesCommit(t *testing.T) {
 		t.Errorf("got %q, %v", got, err)
 	}
 }
+
+func TestIgnored(t *testing.T) {
+	tests := []struct {
+		pattern, file string
+		want          bool
+	}{
+		{"main.py", "main.py", true},
+		{"main.py", "src/main.py", true},
+		{"src/main.py", "src/main.py", true},
+		{"src/main.py", "lib/src/main.py", false},
+		{"vendor/", "vendor/a/b.go", true},
+		{"vendor", "a/vendor/b.go", true},
+		{"vendor", "vendors/b.go", false},
+		{"*.md", "docs/a/b.md", true},
+		{"docs/*", "docs/a/b.md", true},
+		{"docs/*.md", "docs/a/b.md", false},
+		{"**/*_test.go", "a/b/c_test.go", true},
+		{"**/testdata", "a/testdata/x", true},
+	}
+	for _, tt := range tests {
+		if got := ignored([]string{tt.pattern}, tt.file); got != tt.want {
+			t.Errorf("ignored(%q, %q) = %v, want %v", tt.pattern, tt.file, got, tt.want)
+		}
+	}
+}
+
+func TestWithoutIgnored(t *testing.T) {
+	diff := "commit abc\nsubject\n\ndiff --git a/main.py b/main.py\n+import requests\ndiff --git a/docs/a.md b/docs/a.md\n+# hi\n"
+	got := withoutIgnored(diff, []string{"*.md"})
+	if got != "commit abc\nsubject\n\ndiff --git a/main.py b/main.py\n+import requests\n" {
+		t.Errorf("got %q", got)
+	}
+	if got := withoutIgnored(diff, nil); got != diff {
+		t.Errorf("no patterns changed the diff: %q", got)
+	}
+	if got := withoutIgnored(diff, []string{"*.md", "main.py"}); got != "" {
+		t.Errorf("every file ignored, got %q", got)
+	}
+	files := "==== a/b.go ====\npackage a\n==== c.md ====\n# c\n"
+	if got := withoutIgnored(files, []string{"a/"}); got != "==== c.md ====\n# c\n" {
+		t.Errorf("all files: got %q", got)
+	}
+	if got := withoutIgnored("diff --git x x\n+1\n", []string{"x"}); got != "" {
+		t.Errorf("noprefix: got %q", got)
+	}
+}

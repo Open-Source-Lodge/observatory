@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -68,8 +69,10 @@ func (r Report) Failed() bool {
 	return false
 }
 
-// check asks the model for a finding per rule: one request for all the
-// rules, or one request per rule when the config says per_rule.
+// check asks the model for a finding per rule. The rules that see the same
+// changes share one request, or each rule has its own request when the
+// config says per_rule. A rule that ignores every file in the changes
+// passes without a request.
 func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff string) (Report, error) {
 	if len(rules) == 0 {
 		return Report{}, errors.New("no rules — add one with 'observatory add <title>'")
@@ -82,24 +85,58 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 		return Report{}, err
 	}
 	head := fmt.Sprintf("check of %s with %s %s", scope, cfg.Provider, cfg.Model)
-	if !cfg.PerRule {
-		stop := status(head + ", " + rulesLabel(rules))
-		defer stop()
-		return ask(ctx, p, cfg, rules, scope, diff)
-	}
 	report := Report{Scope: scope.String(), Model: cfg.Model}
-	for i, r := range rules {
-		stop := status(fmt.Sprintf("%s, %d/%d %s", head, i+1, len(rules), rulesLabel([]Rule{r})))
-		one, err := ask(ctx, p, cfg, []Rule{r}, scope, diff)
+	groups := batches(rules, cfg.PerRule)
+	for i, g := range groups {
+		label := head + ", " + rulesLabel(g)
+		if len(groups) > 1 {
+			label = fmt.Sprintf("%s, %d/%d %s", head, i+1, len(groups), rulesLabel(g))
+		}
+		seen := withoutIgnored(diff, g[0].Ignore)
+		if seen == "" {
+			for _, r := range g {
+				report.Findings = append(report.Findings, Finding{ID: r.ID, Pass: true, Reason: "the rule ignores every file in the changes"})
+			}
+			continue
+		}
+		stop := status(label)
+		one, err := ask(ctx, p, cfg, g, scope, seen)
 		stop()
 		if err != nil {
-			return report, fmt.Errorf("rule %s: %w", r.ID, err)
+			return report, fmt.Errorf("%s: %w", rulesLabel(g), err)
 		}
 		report.Findings = append(report.Findings, one.Findings...)
 		report.InputTokens += one.InputTokens
 		report.OutputTokens += one.OutputTokens
 	}
+	sortFindings(report.Findings, rules)
 	return report, nil
+}
+
+// batches groups the rules for the requests: one rule per group when
+// perRule is true, else one group per distinct ignore list.
+func batches(rules []Rule, perRule bool) [][]Rule {
+	var out [][]Rule
+	index := map[string]int{}
+	for _, r := range rules {
+		key := strings.Join(r.Ignore, "\n")
+		if i, ok := index[key]; ok && !perRule {
+			out[i] = append(out[i], r)
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, []Rule{r})
+	}
+	return out
+}
+
+// sortFindings puts the findings in the order of the rules.
+func sortFindings(findings []Finding, rules []Rule) {
+	order := map[string]int{}
+	for i, r := range rules {
+		order[r.ID] = i
+	}
+	sort.SliceStable(findings, func(i, j int) bool { return order[findings[i].ID] < order[findings[j].ID] })
 }
 
 // rulesLabel names the rules of a request: one rule with its title, or the
@@ -128,7 +165,7 @@ func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope,
 		return report, fmt.Errorf("the prompt is %d tokens, the limit is %d — narrow the scope, or raise max_tokens in %s/config",
 			count, cfg.MaxTokens, rulesDirName)
 	}
-	answer, in, out, err := p.complete(ctx, text)
+	answer, in, out, err := p.complete(ctx, text, findingsSchema())
 	if err != nil {
 		return report, err
 	}
@@ -246,4 +283,83 @@ func snippet(text string) string {
 		text = text[:300] + "..."
 	}
 	return text
+}
+
+// Draft is what the model writes for a new rule.
+type Draft struct {
+	Title string `json:"title"`
+	Rule  string `json:"rule"`
+	Why   string `json:"why"`
+}
+
+// draft asks the model to write the empty fields of a new rule. The fields
+// that have a value stay as they are.
+func draft(ctx context.Context, cfg Config, d Draft) (Draft, int64, int64, error) {
+	p, err := newProvider(cfg)
+	if err != nil {
+		return d, 0, 0, err
+	}
+	answer, in, out, err := p.complete(ctx, draftPrompt(d), draftSchema())
+	if err != nil {
+		return d, in, out, err
+	}
+	got, err := parseDraft(answer)
+	if err != nil {
+		return d, in, out, err
+	}
+	// ponytail: the prompt asks the model to keep the given fields. This
+	// guard makes sure of it.
+	if strings.TrimSpace(d.Title) == "" {
+		d.Title = strings.TrimSpace(got.Title)
+	}
+	if strings.TrimSpace(d.Rule) == "" {
+		d.Rule = strings.TrimSpace(got.Rule)
+	}
+	if strings.TrimSpace(d.Why) == "" {
+		d.Why = strings.TrimSpace(got.Why)
+	}
+	return d, in, out, nil
+}
+
+// draftPrompt is the request for a draft: what a rule is, the fields the
+// user gave, and what to answer.
+func draftPrompt(d Draft) string {
+	var b strings.Builder
+	b.WriteString("You write a rule for observatory, a tool that sends rules in plain language and a code change to a model, ")
+	b.WriteString("and the model says whether the change breaks each rule.\n\n")
+	b.WriteString("A rule has three fields. The title is one short line. The rule is one or two exact sentences that a model ")
+	b.WriteString("can check against a diff; it goes into the prompt of each check, so keep it short. The why is one or two ")
+	b.WriteString("sentences for people: the reason for the rule and the business context.\n\n")
+	b.WriteString("Example: title \"Use httpx for HTTP calls\", rule \"Every HTTP call goes through httpx; do not import ")
+	b.WriteString("requests or urllib.\", why \"One HTTP client keeps the retry and timeout settings in one place.\"\n\n")
+	b.WriteString("The user gave these fields. Write the empty ones. Return the given ones unchanged.\n\n")
+	fmt.Fprintf(&b, "<title>%s</title>\n<rule>%s</rule>\n<why>%s</why>\n\n", d.Title, d.Rule, d.Why)
+	b.WriteString("Answer with JSON: {\"title\", \"rule\", \"why\"}.\n")
+	return b.String()
+}
+
+func draftSchema() map[string]any {
+	return map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"title": map[string]any{"type": "string"},
+			"rule":  map[string]any{"type": "string"},
+			"why":   map[string]any{"type": "string"},
+		},
+		"required":             []string{"title", "rule", "why"},
+		"additionalProperties": false,
+	}
+}
+
+// parseDraft reads the answer. A model without a JSON schema can wrap the
+// answer in a code fence or add text around it.
+func parseDraft(text string) (Draft, error) {
+	if i := strings.Index(text, "{"); i > 0 {
+		text = text[i:]
+	}
+	var d Draft
+	if err := json.NewDecoder(strings.NewReader(text)).Decode(&d); err != nil {
+		return d, fmt.Errorf("the model did not answer with JSON: %w: %s", err, snippet(text))
+	}
+	return d, nil
 }

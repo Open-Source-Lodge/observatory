@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 )
@@ -148,4 +149,71 @@ func allFiles() (string, error) {
 		fmt.Fprintf(&b, "==== %s ====\n%s\n", path, data)
 	}
 	return b.String(), nil
+}
+
+// withoutIgnored removes the files that match a pattern from the changes.
+// A change is a git diff, or the output of allFiles. The text before the
+// first file, such as the commit message, stays. The result is empty when
+// no file remains.
+func withoutIgnored(diff string, patterns []string) string {
+	if len(patterns) == 0 {
+		return diff
+	}
+	var b strings.Builder
+	keep, kept := true, false
+	for _, line := range strings.SplitAfter(diff, "\n") {
+		if file, ok := changedFile(line); ok {
+			keep = !ignored(patterns, file)
+			kept = kept || keep
+		}
+		if keep {
+			b.WriteString(line)
+		}
+	}
+	if !kept {
+		return ""
+	}
+	return b.String()
+}
+
+// changedFile is the path in the header line of one file: `diff --git a/x b/x`
+// from git, or `==== x ====` from allFiles.
+func changedFile(line string) (string, bool) {
+	line = strings.TrimRight(line, "\n")
+	if rest, ok := strings.CutPrefix(line, "==== "); ok {
+		return strings.TrimSuffix(rest, " ===="), true
+	}
+	rest, ok := strings.CutPrefix(line, "diff --git ")
+	if !ok {
+		return "", false
+	}
+	if _, file, found := strings.Cut(rest, " b/"); found {
+		return file, true
+	}
+	// ponytail: git with diff.noprefix shows `diff --git x x`.
+	return rest[strings.LastIndexByte(rest, ' ')+1:], true
+}
+
+// ignored reports whether a file matches one of the patterns. A pattern is a
+// file, a directory, or a glob in the syntax of path.Match. A pattern with a
+// slash starts at the root of the repository. A pattern without a slash, or
+// with the prefix `**/`, matches at every depth. A directory matches every
+// file in it.
+func ignored(patterns []string, file string) bool {
+	segs := strings.Split(file, "/")
+	for _, p := range patterns {
+		p = strings.TrimSuffix(p, "/")
+		anywhere := !strings.Contains(p, "/")
+		if rest, ok := strings.CutPrefix(p, "**/"); ok {
+			p, anywhere = rest, true
+		}
+		for start := 0; start < len(segs) && (anywhere || start == 0); start++ {
+			for end := start + 1; end <= len(segs); end++ {
+				if ok, _ := path.Match(p, strings.Join(segs[start:end], "/")); ok {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }

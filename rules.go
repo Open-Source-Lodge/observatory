@@ -16,7 +16,11 @@ type Rule struct {
 	Title string
 	// Text is the full content of rule.md, which goes into the prompt.
 	Text string
-	Dir  string
+	// Ignore is the content of the file `ignore` in the directory of the
+	// rule: the files, the directories and the globs that the rule does
+	// not see. One pattern per line, like a .gitignore file.
+	Ignore []string
+	Dir    string
 }
 
 // Summary is the first line of the rule after the title, for a list.
@@ -30,8 +34,9 @@ func (r Rule) Summary() string {
 	return ""
 }
 
-// loadRules reads every `<dir>/<id>/rule.md`, sorted by ID. A directory
-// without a rule.md is not a rule, and loadRules ignores it.
+// loadRules reads every `<dir>/<id>/rule.md` and `<dir>/<id>/ignore`,
+// sorted by ID. A directory without a rule.md is not a rule, and loadRules
+// ignores it.
 func loadRules(dir string) ([]Rule, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -51,14 +56,31 @@ func loadRules(dir string) ([]Rule, error) {
 			continue
 		}
 		rules = append(rules, Rule{
-			ID:    e.Name(),
-			Title: titleOf(string(data), e.Name()),
-			Text:  strings.TrimSpace(string(data)),
-			Dir:   ruleDir,
+			ID:     e.Name(),
+			Title:  titleOf(string(data), e.Name()),
+			Text:   strings.TrimSpace(string(data)),
+			Ignore: patterns(filepath.Join(ruleDir, "ignore")),
+			Dir:    ruleDir,
 		})
 	}
 	sort.Slice(rules, func(i, j int) bool { return rules[i].ID < rules[j].ID })
 	return rules, nil
+}
+
+// patterns reads an ignore file: one pattern per line, with `#` comments.
+// A missing file gives no patterns.
+func patterns(path string) []string {
+	data, _ := os.ReadFile(path)
+	var out []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if i := strings.Index(line, "#"); i >= 0 {
+			line = line[:i]
+		}
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // titleOf is the first `# ` heading of a markdown document, or fallback.

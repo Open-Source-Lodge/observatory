@@ -47,7 +47,8 @@ the ID when you add the rule: `OBS-001`, then `OBS-002`, and so on.
 ├── config
 ├── OBS-001/
 │   ├── rule.md
-│   └── explain.md
+│   ├── explain.md
+│   └── ignore
 └── OBS-002/
     ├── rule.md
     └── explain.md
@@ -62,6 +63,22 @@ the prompt for each run. The first `# ` heading is the title of the rule.
 `explain.md` is the long explanation, for people. Write the reasons for the
 rule here, and the business context. Observatory does not send this file to
 the model in a run.
+
+`ignore` is optional. It lists the files that the rule does not see, one
+pattern per line, with `#` comments. A pattern is a file, a directory, or a
+glob:
+
+```
+docs/            # every file in the directory
+*.md             # every file with this name, in every directory
+src/legacy.py    # one file
+**/testdata      # this name, in every directory
+```
+
+A pattern with a slash starts at the root of the repository. A pattern
+without a slash matches at every depth. Observatory removes the files that
+match from the changes before it sends the rule to the model. A rule that
+ignores every file in the changes passes without a request.
 
 The `examples` directory holds example rules of different types. Copy one
 into `.observatory` and change it to match your repository.
@@ -143,6 +160,9 @@ per_rule = false
 
 One request for all the rules is the cheaper option. One request per rule
 gives each rule the full attention of the model, and costs a request per rule.
+The rules with the same `ignore` file share a request. A rule with a
+different `ignore` file gets its own request, because it sees different
+changes.
 
 An environment variable `OBSERVATORY_<KEY>` replaces the value of a key. Write
 the key in upper case, for example `OBSERVATORY_MODEL=claude-sonnet-5`. The
@@ -217,6 +237,7 @@ Start `observatory` with no arguments to see the rules:
 | --------------- | --------------------------------------------------------------------------------- |
 | `↑` `↓` `k` `j` | move the selection                                                                |
 | `n`             | make a rule: type the title, the rule and the why                                 |
+| `ctrl+g`        | in the new rule form: the model writes the fields that are empty                  |
 | `e` `enter`     | open the directory of the rule in your editor                                     |
 | `d`             | delete the rule, after a confirmation                                             |
 | `s`             | change the scope: the last commit, the uncommitted changes, or every tracked file |
@@ -228,6 +249,10 @@ Start `observatory` with no arguments to see the rules:
 The `e` key looks for the editor in this sequence: `$OBSERVATORY_EDITOR`, then
 `$VISUAL`, then `$EDITOR`. The value is a command with arguments, such as
 `code -n`.
+
+In the new rule form, type the title, or the rule, or the why, then press
+`ctrl+g`. The model of the config writes the fields that are empty. Change the
+text, then press `enter` to make the rule.
 
 ## GitHub Actions
 
