@@ -8,16 +8,34 @@ inputs:
     description: The Anthropic API key. Store it in a secret. For an other provider, set its key with `env` on the job instead.
     required: false
   version:
-    description: The observatory version to install.
+    description: The release tag to install, such as `v1.2.0`. The value `latest` installs the newest release.
     default: latest
 runs:
   using: composite
   steps:
-    - uses: actions/setup-go@v5
-      with:
-        go-version: stable
-    - run: go install github.com/Open-Source-Lodge/observatory@${{ inputs.version }}
+    - name: Install the observatory release binary
       shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: Open-Source-Lodge/observatory
+        VERSION: ${{ inputs.version }}
+      run: |
+        if [ "$VERSION" = latest ]; then
+          VERSION=$(gh release view --repo "$REPO" --json tagName -q .tagName)
+        fi
+        case "$RUNNER_OS" in Linux) os=linux ;; macOS) os=darwin ;; Windows) os=windows ;; esac
+        case "$RUNNER_ARCH" in X64) arch=amd64 ;; ARM64) arch=arm64 ;; esac
+        ext=""
+        if [ "$os" = windows ]; then ext=.exe; fi
+        dir="$RUNNER_TEMP/observatory"
+        gh release download "$VERSION" --repo "$REPO" --dir "$dir" \
+          --pattern "observatory-$os-$arch$ext" --pattern checksums.txt
+        # macOS has shasum, but no sha256sum.
+        command -v sha256sum > /dev/null || sha256sum() { shasum -a 256 "$@"; }
+        (cd "$dir" && sha256sum -c --ignore-missing checksums.txt)
+        mv "$dir/observatory-$os-$arch$ext" "$dir/observatory$ext"
+        chmod +x "$dir/observatory$ext"
+        echo "$dir" >> "$GITHUB_PATH"
     - run: observatory run ${{ inputs.scope }}
       shell: bash
       env:

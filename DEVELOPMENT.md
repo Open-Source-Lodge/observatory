@@ -19,6 +19,14 @@ Release-please opens a release pull request. The pull request updates
 the tag, such as `v1.2.3`, and the GitHub release.
 
 When you merge the release pull request, the `binaries` job builds `observatory`
-for macOS and Linux, on the amd64 and arm64 architectures. The job attaches
-the binaries to the GitHub release. The job also sets the version in the
-binaries, so that `observatory version` shows the tag.
+for macOS, Linux and Windows, on the amd64 and arm64 architectures. The job
+attaches the binaries and `checksums.txt` to the GitHub release. The job also
+sets the version in the binaries, so that `observatory version` shows the tag.
+Then the job moves the major tag, such as `v1`, to the release, so that
+`uses: Open-Source-Lodge/observatory@v1` installs the newest release.
+
+## Dependabot
+
+Dependabot opens one pull request each week for the Go modules and one for the
+actions. The commits use the `chore:` type. A `chore:` or `deps:` commit makes
+no release.
