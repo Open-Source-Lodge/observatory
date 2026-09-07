@@ -20,10 +20,11 @@ var (
 	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("204"))
 	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	labelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Width(9)
+	scopeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 )
 
 const (
-	listHelp   = "↑↓ move · n new · e editor · d delete · r run · R run all · ctrl+r refresh · q quit"
+	listHelp   = "↑↓ move · n new · e editor · d delete · s scope · r run · R run all · ctrl+r refresh · q quit"
 	newHelp    = "tab next field · enter create · esc cancel"
 	deleteHelp = "y delete · esc cancel"
 	reportHelp = "esc back · q quit"
@@ -38,6 +39,16 @@ const (
 	modeDelete
 	modeReport
 )
+
+// scopes are the scopes the s key cycles through, with a name for the screen.
+var scopes = []struct {
+	name  string
+	scope Scope
+}{
+	{"the last commit", Scope{}},
+	{"the uncommitted changes", Scope{Uncommitted: true}},
+	{"every tracked file", Scope{All: true}},
+}
 
 type rulesMsg struct {
 	rules []Rule
@@ -60,6 +71,7 @@ type model struct {
 	rules   []Rule
 	cursor  int
 	mode    mode
+	scope   int // index into scopes
 	inputs  []textinput.Model
 	focus   int
 	msg     string
@@ -123,10 +135,10 @@ func deleteCmd(r Rule) tea.Cmd {
 	}
 }
 
-// runCmd checks the last commit against rules; nil means every rule.
-func runCmd(rules []Rule) tea.Cmd {
+// runCmd checks scope against rules; nil means every rule.
+func runCmd(scope Scope, rules []Rule) tea.Cmd {
 	return func() tea.Msg {
-		report, err := runCheck(context.Background(), Scope{}, rules)
+		report, err := runCheck(context.Background(), scope, rules)
 		return reportMsg{report: report, err: err}
 	}
 }
@@ -225,10 +237,13 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+r":
 		m.setMsg("", nil)
 		return m, m.loadRules
+	case "s":
+		m.scope = (m.scope + 1) % len(scopes)
+		m.setMsg("", nil)
 	case "r":
 		if r, ok := m.selected(); ok {
 			m.setMsg("", nil)
-			return m.start("checking the changes against rule "+r.ID, runCmd([]Rule{r}))
+			return m.start("checking "+scopes[m.scope].name+" against rule "+r.ID, runCmd(scopes[m.scope].scope, []Rule{r}))
 		}
 	case "n":
 		m.mode, m.focus, m.inputs = modeNew, 0, newInputs()
@@ -246,7 +261,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "R":
 		m.setMsg("", nil)
-		return m.start("checking the changes against every rule", runCmd(nil))
+		return m.start("checking "+scopes[m.scope].name+" against every rule", runCmd(scopes[m.scope].scope, nil))
 	}
 	return m, nil
 }
@@ -336,7 +351,7 @@ func (m *model) setMsg(text string, err error) {
 
 func (m model) View() string {
 	var b strings.Builder
-	b.WriteString("  " + titleStyle.Render("observatory") + dimStyle.Render(" · "+m.dir) + "\n\n")
+	b.WriteString("  " + titleStyle.Render("observatory") + dimStyle.Render(" · "+m.dir+" · scope: ") + scopeStyle.Render(scopes[m.scope].name) + "\n\n")
 	switch m.mode {
 	case modeNew:
 		m.viewNew(&b)

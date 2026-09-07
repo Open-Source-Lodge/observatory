@@ -204,24 +204,25 @@ key has no effect on this provider.
 Start `observatory` with no arguments to see the rules:
 
 ```
-  observatory · /home/me/myrepo/.observatory
+  observatory · /home/me/myrepo/.observatory · scope: the last commit
 
 ❯ OBS-001  Use httpx for HTTP calls  Every HTTP call goes through httpx.
   OBS-002  No print statements       Use the logger, not print.
 
-  ↑↓ move · n new · e editor · d delete · r run · R run all · ctrl+r refresh · q quit
+  ↑↓ move · n new · e editor · d delete · s scope · r run · R run all · ctrl+r refresh · q quit
 ```
 
-| key             | operation                                         |
-| --------------- | ------------------------------------------------- |
-| `↑` `↓` `k` `j` | move the selection                                |
-| `n`             | make a rule: type the title, the rule and the why |
-| `e` `enter`     | open the directory of the rule in your editor     |
-| `d`             | delete the rule, after a confirmation             |
-| `r`             | check the last commit against the selected rule   |
-| `R`             | check the last commit against every rule          |
-| `ctrl+r`        | read the rules again                              |
-| `q` `esc`       | stop observatory                                  |
+| key             | operation                                                                         |
+| --------------- | --------------------------------------------------------------------------------- |
+| `↑` `↓` `k` `j` | move the selection                                                                |
+| `n`             | make a rule: type the title, the rule and the why                                 |
+| `e` `enter`     | open the directory of the rule in your editor                                     |
+| `d`             | delete the rule, after a confirmation                                             |
+| `s`             | change the scope: the last commit, the uncommitted changes, or every tracked file |
+| `r`             | check the scope against the selected rule                                         |
+| `R`             | check the scope against every rule                                                |
+| `ctrl+r`        | read the rules again                                                              |
+| `q` `esc`       | stop observatory                                                                  |
 
 The `e` key looks for the editor in this sequence: `$OBSERVATORY_EDITOR`, then
 `$VISUAL`, then `$EDITOR`. The value is a command with arguments, such as
