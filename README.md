@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/logo.svg" alt="Observatory logo" width="520"></p>
+
 # observatory
 
 Observatory is a test system that uses LLMs to make sure that your
