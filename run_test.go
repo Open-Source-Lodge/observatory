@@ -49,6 +49,9 @@ func TestParseFindings(t *testing.T) {
 	if !(Report{Findings: got}).Failed() {
 		t.Error("report with a failure reports no failure")
 	}
+	if got, err := parseFindings("```json\n{\"results\":[]}\n```", testRules); err != nil || len(got) != len(testRules) {
+		t.Errorf("fenced JSON: %v %v", got, err)
+	}
 	if _, err := parseFindings("not json", testRules); err == nil {
 		t.Error("expected an error for a non-JSON answer")
 	}
@@ -118,5 +121,26 @@ func TestClaudeProvider(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "in")); string(got) != "hello" {
 		t.Errorf("stdin: %q", got)
+	}
+}
+
+func TestCopilotProvider(t *testing.T) {
+	dir := t.TempDir()
+	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "in") + "\necho \"$@\" > " + filepath.Join(dir, "args") + "\necho '{\"results\":[]}'\n"
+	os.WriteFile(filepath.Join(dir, "copilot"), []byte(script), 0o755)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	p, err := newProvider(Config{Provider: "copilot", Model: "m"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	text, in, out, err := p.complete(context.Background(), "hello")
+	if err != nil || text != "{\"results\":[]}\n" || in != 1 || out != 3 {
+		t.Fatalf("got %q %d %d %v", text, in, out, err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "in")); string(got) != "hello" {
+		t.Errorf("stdin: %q", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "args")); !strings.Contains(string(got), "--model m --available-tools=none") {
+		t.Errorf("args: %q", got)
 	}
 }

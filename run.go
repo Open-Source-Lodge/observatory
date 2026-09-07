@@ -135,6 +135,11 @@ func parseFindings(text string, rules []Rule) ([]Finding, error) {
 	var out struct {
 		Results []Finding `json:"results"`
 	}
+	// A model without a JSON schema can wrap the answer in a code fence.
+	// Keep the text from the first { to the last }.
+	if i, j := strings.Index(text, "{"), strings.LastIndex(text, "}"); i >= 0 && j > i {
+		text = text[i : j+1]
+	}
 	if err := json.Unmarshal([]byte(text), &out); err != nil {
 		return nil, fmt.Errorf("the model did not answer with JSON: %w", err)
 	}

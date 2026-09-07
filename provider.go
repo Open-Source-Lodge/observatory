@@ -43,8 +43,13 @@ func newProvider(cfg Config) (provider, error) {
 			return nil, errors.New("the claude command is not installed: see https://claude.com/claude-code")
 		}
 		return claudeProvider{cfg: cfg}, nil
+	case "copilot":
+		if _, err := exec.LookPath("copilot"); err != nil {
+			return nil, errors.New("the copilot command is not installed: run npm install -g @github/copilot")
+		}
+		return copilotProvider{cfg: cfg}, nil
 	}
-	return nil, fmt.Errorf("unknown provider %q: use \"anthropic\", \"openai\" or \"claude\"", cfg.Provider)
+	return nil, fmt.Errorf("unknown provider %q: use \"anthropic\", \"openai\", \"claude\" or \"copilot\"", cfg.Provider)
 }
 
 // anthropicProvider uses the Anthropic API through its Go SDK.
@@ -217,6 +222,37 @@ func (p claudeProvider) complete(ctx context.Context, prompt string) (string, in
 		return string(out.StructuredOutput), in, out.Usage.OutputTokens, nil
 	}
 	return out.Result, in, out.Usage.OutputTokens, nil
+}
+
+// copilotProvider runs the GitHub Copilot CLI command. It uses the login of
+// the command, or GITHUB_TOKEN in GitHub Actions.
+type copilotProvider struct {
+	cfg Config
+}
+
+func (p copilotProvider) countTokens(_ context.Context, prompt string) (int64, error) {
+	// ponytail: the command has no count endpoint. Estimate as openai does.
+	return int64(len(prompt) / 4), nil
+}
+
+func (p copilotProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
+	// The prompt goes on stdin: the command reads stdin as the prompt when
+	// stdin is not a terminal. No tools and no MCP servers: the model must
+	// judge only the prompt.
+	// ponytail: --available-tools with an empty value means every tool, so
+	// name a tool that does not exist.
+	cmd := exec.CommandContext(ctx, "copilot", "--silent", "--model", p.cfg.Model,
+		"--available-tools=none", "--disable-builtin-mcps", "--no-custom-instructions",
+		"--no-ask-user", "--no-auto-update", "--no-color")
+	cmd.Stdin = strings.NewReader(prompt)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	data, err := cmd.Output()
+	if err != nil {
+		return "", 0, 0, fmt.Errorf("copilot: %w: %s", err, strings.TrimSpace(stderr.String()))
+	}
+	// ponytail: the command reports no token usage. Both counts are estimates.
+	return string(data), int64(len(prompt) / 4), int64(len(data) / 4), nil
 }
 
 func errMaxOutput(cfg Config) error {

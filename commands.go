@@ -153,8 +153,8 @@ func cmdDoctor(args []string) error {
 	_, err = newProvider(cfg)
 	report(fmt.Sprintf("provider %s, model %s", cfg.Provider, cfg.Model), err)
 	switch {
-	case cfg.Provider == "claude":
-		// The claude command holds its own login.
+	case cfg.Provider == "claude", cfg.Provider == "copilot":
+		// The command holds its own login.
 	case os.Getenv(cfg.APIKeyEnv) == "" && (cfg.Provider != "anthropic" || os.Getenv("ANTHROPIC_AUTH_TOKEN") == ""):
 		report("API credentials", errors.New(cfg.APIKeyEnv+" is not set"))
 	default:
