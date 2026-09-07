@@ -15,6 +15,6 @@ their code. A removed field breaks their code at a time we do not choose.
 ## What the rule does not cover
 
 - A new endpoint, a new optional parameter or a new field in a response.
-- A change under `api/v2/` before that version is released.
+- A change under `api/v2/` before the release of that version.
 - A change that the commit message marks with `BREAKING CHANGE:`. That
   change goes through the deprecation process in `docs/api-policy.md`.

@@ -5,8 +5,36 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 )
+
+// status shows progress on stderr while a request runs, so a slow model does
+// not look like a hang. A terminal gets a spinner with the elapsed time; a
+// log gets one line. The report goes to stdout. stop ends the spinner.
+var status = func(text string) (stop func()) {
+	if fi, err := os.Stderr.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		fmt.Fprintln(os.Stderr, text+" ...")
+		return func() {}
+	}
+	done, finished := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(finished)
+		frames := []rune("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+		start := time.Now()
+		for i := 0; ; i++ {
+			fmt.Fprintf(os.Stderr, "\r\033[K%c %s %ds", frames[i%len(frames)], text, int(time.Since(start).Seconds()))
+			select {
+			case <-done:
+				fmt.Fprint(os.Stderr, "\r\033[K")
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}()
+	return func() { close(done); <-finished }
+}
 
 // Finding is the verdict of the model on one rule.
 type Finding struct {
@@ -14,11 +42,16 @@ type Finding struct {
 	Pass   bool     `json:"pass"`
 	Reason string   `json:"reason"`
 	Files  []string `json:"files"`
+	// InputTokens and OutputTokens are what this rule cost. They have a
+	// value only when the rule had its own request (per_rule).
+	InputTokens  int64 `json:"-"`
+	OutputTokens int64 `json:"-"`
 }
 
 // Report is the outcome of one run.
 type Report struct {
 	Scope    string
+	Model    string
 	Findings []Finding
 	// InputTokens and OutputTokens are what the run cost.
 	InputTokens  int64
@@ -48,12 +81,17 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	if err != nil {
 		return Report{}, err
 	}
+	head := fmt.Sprintf("check of %s with %s %s", scope, cfg.Provider, cfg.Model)
 	if !cfg.PerRule {
+		stop := status(head + ", " + rulesLabel(rules))
+		defer stop()
 		return ask(ctx, p, cfg, rules, scope, diff)
 	}
-	report := Report{Scope: scope.String()}
-	for _, r := range rules {
+	report := Report{Scope: scope.String(), Model: cfg.Model}
+	for i, r := range rules {
+		stop := status(fmt.Sprintf("%s, %d/%d %s", head, i+1, len(rules), rulesLabel([]Rule{r})))
 		one, err := ask(ctx, p, cfg, []Rule{r}, scope, diff)
+		stop()
 		if err != nil {
 			return report, fmt.Errorf("rule %s: %w", r.ID, err)
 		}
@@ -64,10 +102,23 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	return report, nil
 }
 
+// rulesLabel names the rules of a request: one rule with its title, or the
+// IDs of many.
+func rulesLabel(rules []Rule) string {
+	if len(rules) == 1 {
+		return "rule " + rules[0].ID + " " + rules[0].Title
+	}
+	ids := make([]string, len(rules))
+	for i, r := range rules {
+		ids[i] = r.ID
+	}
+	return fmt.Sprintf("%d rules %s", len(rules), strings.Join(ids, ", "))
+}
+
 // ask sends rules and the changes to the provider in one request and reads
 // back one finding per rule.
 func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope, diff string) (Report, error) {
-	report := Report{Scope: scope.String()}
+	report := Report{Scope: scope.String(), Model: cfg.Model}
 	text := prompt(rules, scope, diff)
 	count, err := p.countTokens(ctx, text)
 	if err != nil {
@@ -83,6 +134,9 @@ func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope,
 	}
 	report.InputTokens, report.OutputTokens = in, out
 	report.Findings, err = parseFindings(answer, rules)
+	if len(rules) == 1 && len(report.Findings) == 1 {
+		report.Findings[0].InputTokens, report.Findings[0].OutputTokens = in, out
+	}
 	return report, err
 }
 
@@ -130,22 +184,24 @@ func findingsSchema() map[string]any {
 
 // parseFindings reads the answer and returns one finding per rule, in rule
 // order. A rule the model did not answer for fails, so that a silent miss
-// cannot pass a check.
+// cannot pass a check. An answer with no verdict at all is an error that
+// shows the answer.
 func parseFindings(text string, rules []Rule) ([]Finding, error) {
-	var out struct {
-		Results []Finding `json:"results"`
-	}
-	// A model without a JSON schema can wrap the answer in a code fence, or
-	// add text around it. Decode the first JSON object and ignore the rest.
-	if i := strings.Index(text, "{"); i > 0 {
+	// A model without a JSON schema can wrap the answer in a code fence, add
+	// text around it, or leave out the {"results": ...} wrapper. Decode the
+	// first JSON value and collect every object in it that has an id and a
+	// pass.
+	if i := strings.IndexAny(text, "{["); i > 0 {
 		text = text[i:]
 	}
-	if err := json.NewDecoder(strings.NewReader(text)).Decode(&out); err != nil {
-		return nil, fmt.Errorf("the model did not answer with JSON: %w", err)
+	var value any
+	if err := json.NewDecoder(strings.NewReader(text)).Decode(&value); err != nil {
+		return nil, fmt.Errorf("the model did not answer with JSON: %w: %s", err, snippet(text))
 	}
-	byID := make(map[string]Finding, len(out.Results))
-	for _, f := range out.Results {
-		byID[f.ID] = f
+	byID := map[string]Finding{}
+	collectFindings(value, byID)
+	if len(byID) == 0 {
+		return nil, errors.New("the model gave no verdict: " + snippet(text))
 	}
 	findings := make([]Finding, len(rules))
 	for i, r := range rules {
@@ -156,4 +212,38 @@ func parseFindings(text string, rules []Rule) ([]Finding, error) {
 		findings[i] = f
 	}
 	return findings, nil
+}
+
+// collectFindings walks a decoded JSON value and puts every object with a
+// string id and a boolean pass into byID.
+func collectFindings(value any, byID map[string]Finding) {
+	switch v := value.(type) {
+	case []any:
+		for _, item := range v {
+			collectFindings(item, byID)
+		}
+	case map[string]any:
+		id, hasID := v["id"].(string)
+		_, hasPass := v["pass"].(bool)
+		if hasID && hasPass {
+			var f Finding
+			data, _ := json.Marshal(v)
+			if json.Unmarshal(data, &f) == nil {
+				byID[id] = f
+			}
+			return
+		}
+		for _, item := range v {
+			collectFindings(item, byID)
+		}
+	}
+}
+
+// snippet is the start of an answer, for an error message.
+func snippet(text string) string {
+	text = strings.TrimSpace(text)
+	if len(text) > 300 {
+		text = text[:300] + "..."
+	}
+	return text
 }

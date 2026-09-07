@@ -3,7 +3,7 @@
 ## Why
 
 The docstring is the contract of the function. The editor shows it, the API
-documentation is built from it, and a reviewer reads it before the code.
+documentation comes from it, and a reviewer reads it before the code.
 
 ## What the rule covers
 

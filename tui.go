@@ -20,14 +20,15 @@ var (
 	errStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("204"))
 	okStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("42"))
 	labelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Width(9)
+	scopeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 )
 
 const (
-	listHelp   = "↑↓ move · n new · e editor · d delete · R run · r refresh · q quit"
+	listHelp   = "↑↓ move · n new · e editor · d delete · s scope · r run · R run all · ctrl+r refresh · q quit"
 	newHelp    = "tab next field · enter create · esc cancel"
 	deleteHelp = "y delete · esc cancel"
 	reportHelp = "esc back · q quit"
-	busyHelp   = "working · ctrl+c quit"
+	busyHelp   = "in progress · ctrl+c quit"
 )
 
 type mode int
@@ -38,6 +39,16 @@ const (
 	modeDelete
 	modeReport
 )
+
+// scopes are the scopes the s key cycles through, with a name for the screen.
+var scopes = []struct {
+	name  string
+	scope Scope
+}{
+	{"the last commit", Scope{}},
+	{"the uncommitted changes", Scope{Uncommitted: true}},
+	{"every tracked file", Scope{All: true}},
+}
 
 type rulesMsg struct {
 	rules []Rule
@@ -60,6 +71,7 @@ type model struct {
 	rules   []Rule
 	cursor  int
 	mode    mode
+	scope   int // index into scopes
 	inputs  []textinput.Model
 	focus   int
 	msg     string
@@ -67,8 +79,6 @@ type model struct {
 	busy    string
 	spinner spinner.Model
 	report  Report
-	width   int
-	height  int
 }
 
 func tui() error {
@@ -76,6 +86,7 @@ func tui() error {
 	if err != nil {
 		return err
 	}
+	status = func(string) func() { return func() {} } // the spinner of the screen shows the progress
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(cursorStyle))
 	_, err = tea.NewProgram(model{dir: dir, spinner: sp}, tea.WithAltScreen()).Run()
 	return err
@@ -124,9 +135,12 @@ func deleteCmd(r Rule) tea.Cmd {
 	}
 }
 
-func runCmd() tea.Msg {
-	report, err := runCheck(context.Background(), Scope{})
-	return reportMsg{report: report, err: err}
+// runCmd checks scope against rules; nil means every rule.
+func runCmd(scope Scope, rules []Rule) tea.Cmd {
+	return func() tea.Msg {
+		report, err := runCheck(context.Background(), scope, rules)
+		return reportMsg{report: report, err: err}
+	}
 }
 
 // editorCmd opens the directory of the rule in the editor. A terminal editor
@@ -150,9 +164,6 @@ func editorCmd(r Rule) tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width, m.height = msg.Width, msg.Height
-
 	case rulesMsg:
 		m.rules = msg.rules
 		if msg.err != nil {
@@ -223,9 +234,17 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cursor = 0
 	case "end", "G":
 		m.cursor = max(0, len(m.rules)-1)
-	case "r":
+	case "ctrl+r":
 		m.setMsg("", nil)
 		return m, m.loadRules
+	case "s":
+		m.scope = (m.scope + 1) % len(scopes)
+		m.setMsg("", nil)
+	case "r":
+		if r, ok := m.selected(); ok {
+			m.setMsg("", nil)
+			return m.start("check of "+scopes[m.scope].name+" against rule "+r.ID, runCmd(scopes[m.scope].scope, []Rule{r}))
+		}
 	case "n":
 		m.mode, m.focus, m.inputs = modeNew, 0, newInputs()
 		m.setMsg("", nil)
@@ -242,7 +261,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "R":
 		m.setMsg("", nil)
-		return m.start("checking the changes against the rules", runCmd)
+		return m.start("check of "+scopes[m.scope].name+" against every rule", runCmd(scopes[m.scope].scope, nil))
 	}
 	return m, nil
 }
@@ -258,7 +277,7 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.mode = modeList
-		return m.start("making "+title, createCmd(m.dir, title, m.inputs[1].Value(), m.inputs[2].Value()))
+		return m.start("new rule "+title, createCmd(m.dir, title, m.inputs[1].Value(), m.inputs[2].Value()))
 	case "tab", "down", "shift+tab", "up":
 		if msg.String() == "tab" || msg.String() == "down" {
 			m.focus = (m.focus + 1) % len(m.inputs)
@@ -292,7 +311,7 @@ func (m model) updateDelete(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "y", "enter":
 		m.mode = modeList
-		return m.start("deleting "+r.ID, deleteCmd(r))
+		return m.start("delete of "+r.ID, deleteCmd(r))
 	case "esc", "n", "q", "ctrl+c":
 		m.mode = modeList
 	}
@@ -332,7 +351,7 @@ func (m *model) setMsg(text string, err error) {
 
 func (m model) View() string {
 	var b strings.Builder
-	b.WriteString("  " + titleStyle.Render("observatory") + dimStyle.Render(" · "+m.dir) + "\n\n")
+	b.WriteString("  " + titleStyle.Render("observatory") + dimStyle.Render(" · "+m.dir+" · scope: ") + scopeStyle.Render(scopes[m.scope].name) + "\n\n")
 	switch m.mode {
 	case modeNew:
 		m.viewNew(&b)
@@ -399,13 +418,13 @@ func (m model) viewNew(b *strings.Builder) {
 }
 
 func (m model) viewReport(b *strings.Builder) {
-	b.WriteString("  " + titleStyle.Render("Checked "+m.report.Scope) + "\n\n")
+	b.WriteString("  " + titleStyle.Render("Checked "+m.report.Scope) + dimStyle.Render(" · "+m.report.Model) + "\n\n")
 	for _, f := range m.report.Findings {
 		mark := okStyle.Render("PASS")
 		if !f.Pass {
 			mark = errStyle.Render("FAIL")
 		}
-		b.WriteString(fmt.Sprintf("  %s  %s  %s\n", mark, dimStyle.Render(f.ID), f.Reason))
+		b.WriteString(fmt.Sprintf("  %s  %s  %s%s\n", mark, dimStyle.Render(f.ID), f.Reason, dimStyle.Render(tokensNote(f))))
 	}
 	b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("tokens: %d in, %d out", m.report.InputTokens, m.report.OutputTokens))))
 }

@@ -1,16 +1,14 @@
 # observatory
 
-Observatory is a testing system that uses LLMs to make sure that your
-repository, code, product or service obeys your rules. It behaves as a linter
-that can check rules on a higher level, including rules that are harder to
-write as code.
+Observatory is a test system that uses LLMs to make sure that your
+repository, code, product or service obeys your rules. It is a linter for
+rules that are hard, or not possible, to write as code.
 
 You write the rules in plain language. A rule can be "use httpx for every HTTP
 call" or "each public function has a docstring". Observatory sends the rules
 and the changes to the model, and the model gives a verdict for each rule.
-Think of it as `pytest` for the rules that a linter cannot express.
 
-Observatory is a command line tool with a terminal user interface. It runs on
+Observatory has a command line tool and a terminal user interface. It runs on
 your machine, or in a GitHub Actions workflow.
 
 ## Install
@@ -82,15 +80,22 @@ observatory add Use httpx for HTTP calls
 ### run
 
 The `observatory run` command sends the rules and the changes to the model.
-It prints one line per rule, and the number of tokens the run used. The exit
-code is 1 when a rule fails, so a workflow step fails too:
+While the model works, it shows a spinner on stderr with the scope, the
+provider, the model, the rule in progress and the elapsed time. A log without
+a terminal gets one line instead. Then it prints the model, one line per rule, and
+the number of tokens the run used. The exit code is 1 when a rule fails, so
+a workflow step fails too:
 
 ```
+model: claude-sonnet-4-5
 checked the commit HEAD
 PASS  OBS-001  No file in the diff makes an HTTP call.
 FAIL  OBS-002  src/api.py line 12 adds `print(response)`; the rule asks for the logger.
 tokens: 2310 in, 96 out
 ```
+
+When `per_rule` is `true`, each rule line also shows the tokens of its own
+request, as `(1150 in, 40 out)`.
 
 The scope says which changes the model reads:
 
@@ -146,7 +151,8 @@ environment variable wins over the config file.
 ### Providers
 
 The `anthropic` provider is the default. It uses the Anthropic API with the
-key in `ANTHROPIC_API_KEY`.
+key in `ANTHROPIC_API_KEY`. If that variable is empty, it uses the OAuth token
+in `ANTHROPIC_AUTH_TOKEN`.
 
 The `openai` provider sends a chat completions request to `base_url`. OpenAI,
 Ollama, OpenRouter and Groq all accept this request. The provider reads the
@@ -174,7 +180,9 @@ model = "opus"
 
 The provider runs `claude -p` with no tools and no MCP servers, and estimates
 the tokens as the `openai` provider does. The `max_output_tokens` key has no
-effect on this provider.
+effect on this provider. The provider removes `ANTHROPIC_API_KEY` and
+`ANTHROPIC_AUTH_TOKEN` from the environment of the command, so the command
+always uses its login. Use the `anthropic` provider to check with an API key.
 
 The `copilot` provider runs the `copilot` command of the GitHub Copilot CLI.
 The command uses its own login, so a GitHub Copilot subscription works
@@ -197,23 +205,25 @@ key has no effect on this provider.
 Start `observatory` with no arguments to see the rules:
 
 ```
-  observatory · /home/me/myrepo/.observatory
+  observatory · /home/me/myrepo/.observatory · scope: the last commit
 
 ❯ OBS-001  Use httpx for HTTP calls  Every HTTP call goes through httpx.
   OBS-002  No print statements       Use the logger, not print.
 
-  ↑↓ move · n new · e editor · d delete · R run · r refresh · q quit
+  ↑↓ move · n new · e editor · d delete · s scope · r run · R run all · ctrl+r refresh · q quit
 ```
 
-| key             | operation                                         |
-| --------------- | ------------------------------------------------- |
-| `↑` `↓` `k` `j` | move the selection                                |
-| `n`             | make a rule: type the title, the rule and the why |
-| `e` `enter`     | open the directory of the rule in your editor     |
-| `d`             | delete the rule, after a confirmation             |
-| `R`             | check the last commit                             |
-| `r`             | read the rules again                              |
-| `q` `esc`       | stop observatory                                  |
+| key             | operation                                                                         |
+| --------------- | --------------------------------------------------------------------------------- |
+| `↑` `↓` `k` `j` | move the selection                                                                |
+| `n`             | make a rule: type the title, the rule and the why                                 |
+| `e` `enter`     | open the directory of the rule in your editor                                     |
+| `d`             | delete the rule, after a confirmation                                             |
+| `s`             | change the scope: the last commit, the uncommitted changes, or every tracked file |
+| `r`             | check the scope against the selected rule                                         |
+| `R`             | check the scope against every rule                                                |
+| `ctrl+r`        | read the rules again                                                              |
+| `q` `esc`       | stop observatory                                                                  |
 
 The `e` key looks for the editor in this sequence: `$OBSERVATORY_EDITOR`, then
 `$VISUAL`, then `$EDITOR`. The value is a command with arguments, such as
@@ -288,8 +298,8 @@ make lint
 Write all documentation in this repository in ASD-STE100 Simplified Technical
 English. These are the primary rules:
 
-- Use the words from the STE dictionary. Technical names, such as `rule`,
-  `commit` and `token`, are permitted.
+- Use the words from the STE dictionary. You can use technical names, such as
+  `rule`, `commit` and `token`.
 - Give one meaning to each word. Do not use a word as a noun and as a verb.
 - Use the same word for the same thing in all the documents.
 - Write short sentences. Use a maximum of 20 words in an instruction, and a
@@ -308,3 +318,8 @@ English. These are the primary rules:
 
 Text in a code block shows the output of the program. Do not change that text
 in the documentation. Change the program first.
+
+## License
+
+Copyright (C) 2026 Stephan Nordnes Eriksen. Observatory is free software
+under the GNU AGPLv3. See `LICENSE`.

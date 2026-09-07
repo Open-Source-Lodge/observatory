@@ -10,10 +10,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
-
-	"github.com/anthropics/anthropic-sdk-go"
-	"github.com/anthropics/anthropic-sdk-go/option"
 )
 
 // provider is the model API that answers a prompt.
@@ -28,14 +26,7 @@ type provider interface {
 func newProvider(cfg Config) (provider, error) {
 	switch cfg.Provider {
 	case "anthropic":
-		var opts []option.RequestOption
-		if key := os.Getenv(cfg.APIKeyEnv); key != "" {
-			opts = append(opts, option.WithAPIKey(key))
-		}
-		if cfg.BaseURL != "" {
-			opts = append(opts, option.WithBaseURL(cfg.BaseURL))
-		}
-		return anthropicProvider{cfg: cfg, client: anthropic.NewClient(opts...)}, nil
+		return anthropicProvider{cfg: cfg}, nil
 	case "openai":
 		return openaiProvider{cfg: cfg}, nil
 	case "claude":
@@ -52,99 +43,127 @@ func newProvider(cfg Config) (provider, error) {
 	return nil, fmt.Errorf("unknown provider %q: use \"anthropic\", \"openai\", \"claude\" or \"copilot\"", cfg.Provider)
 }
 
-// anthropicProvider uses the Anthropic API through its Go SDK.
+// postJSON sends body to url as JSON and decodes the answer into out.
+//
+// postJSON does not retry after a 429 or a 5xx status. Add a retry when a
+// run fails on one.
+func postJSON(ctx context.Context, url string, headers map[string]string, body, out any) error {
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	if resp.StatusCode/100 != 2 {
+		return fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(data)))
+	}
+	if err := json.Unmarshal(data, out); err != nil {
+		return fmt.Errorf("unexpected answer from %s: %s", url, strings.TrimSpace(string(data)))
+	}
+	return nil
+}
+
+// userMessage is the one message of a request: the whole prompt.
+func userMessage(prompt string) []map[string]string {
+	return []map[string]string{{"role": "user", "content": prompt}}
+}
+
+// anthropicProvider uses the Messages API of Anthropic.
 type anthropicProvider struct {
-	cfg    Config
-	client anthropic.Client
+	cfg Config
+}
+
+// headers has the API version and the credentials. The key goes in
+// x-api-key. An OAuth token in ANTHROPIC_AUTH_TOKEN goes in Authorization.
+func (p anthropicProvider) headers() map[string]string {
+	h := map[string]string{"anthropic-version": "2023-06-01"}
+	if key := os.Getenv(p.cfg.APIKeyEnv); key != "" {
+		h["x-api-key"] = key
+	} else if token := os.Getenv("ANTHROPIC_AUTH_TOKEN"); token != "" {
+		h["Authorization"] = "Bearer " + token
+	}
+	return h
 }
 
 func (p anthropicProvider) countTokens(ctx context.Context, prompt string) (int64, error) {
-	count, err := p.client.Messages.CountTokens(ctx, anthropic.MessageCountTokensParams{
-		Model:    anthropic.Model(p.cfg.Model),
-		Messages: []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
-	})
-	if err != nil {
-		return 0, err
+	var out struct {
+		InputTokens int64 `json:"input_tokens"`
 	}
-	return count.InputTokens, nil
+	err := postJSON(ctx, strings.TrimRight(p.cfg.BaseURL, "/")+"/v1/messages/count_tokens", p.headers(),
+		map[string]any{"model": p.cfg.Model, "messages": userMessage(prompt)}, &out)
+	return out.InputTokens, err
 }
 
 func (p anthropicProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
-	resp, err := p.client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     anthropic.Model(p.cfg.Model),
-		MaxTokens: int64(p.cfg.MaxOutputTokens),
-		Messages:  []anthropic.MessageParam{anthropic.NewUserMessage(anthropic.NewTextBlock(prompt))},
-		OutputConfig: anthropic.OutputConfigParam{
-			Format: anthropic.JSONOutputFormatParam{Schema: findingsSchema()},
+	var out struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		StopReason  string `json:"stop_reason"`
+		StopDetails struct {
+			Explanation string `json:"explanation"`
+		} `json:"stop_details"`
+		Usage struct {
+			InputTokens  int64 `json:"input_tokens"`
+			OutputTokens int64 `json:"output_tokens"`
+		} `json:"usage"`
+	}
+	err := postJSON(ctx, strings.TrimRight(p.cfg.BaseURL, "/")+"/v1/messages", p.headers(), map[string]any{
+		"model":      p.cfg.Model,
+		"max_tokens": p.cfg.MaxOutputTokens,
+		"messages":   userMessage(prompt),
+		"output_config": map[string]any{
+			"format": map[string]any{"type": "json_schema", "schema": findingsSchema()},
 		},
-	})
+	}, &out)
 	if err != nil {
 		return "", 0, 0, err
 	}
-	in, out := resp.Usage.InputTokens, resp.Usage.OutputTokens
-	switch resp.StopReason {
-	case anthropic.StopReasonRefusal:
-		return "", in, out, errors.New("the model declined the request: " + resp.StopDetails.Explanation)
-	case anthropic.StopReasonMaxTokens:
-		return "", in, out, errMaxOutput(p.cfg)
+	in, used := out.Usage.InputTokens, out.Usage.OutputTokens
+	switch out.StopReason {
+	case "refusal":
+		return "", in, used, errors.New("the model declined the request: " + out.StopDetails.Explanation)
+	case "max_tokens":
+		return "", in, used, errMaxOutput(p.cfg)
 	}
 	var text strings.Builder
-	for _, block := range resp.Content {
-		if t, ok := block.AsAny().(anthropic.TextBlock); ok {
-			text.WriteString(t.Text)
+	for _, c := range out.Content {
+		if c.Type == "text" {
+			text.WriteString(c.Text)
 		}
 	}
-	return text.String(), in, out, nil
+	return text.String(), in, used, nil
 }
 
-// openaiProvider uses a chat completions endpoint: OpenAI, Ollama, OpenRouter
-// and most others speak it.
+// openaiProvider uses a chat completions endpoint. OpenAI, Ollama, OpenRouter
+// and most other APIs have one.
 type openaiProvider struct {
 	cfg Config
 }
 
 func (p openaiProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// ponytail: this API has no count endpoint. Four bytes per token is the
-	// usual estimate; the usage in the answer gives the true count.
+	// This API has no count endpoint. Four bytes per token is the usual
+	// estimate. The usage in the answer gives the true count.
 	return int64(len(prompt) / 4), nil
 }
 
 func (p openaiProvider) complete(ctx context.Context, prompt string) (string, int64, int64, error) {
-	body, _ := json.Marshal(map[string]any{
-		"model": p.cfg.Model,
-		// ponytail: max_tokens works on Ollama, OpenRouter and Groq. The
-		// OpenAI reasoning models want max_completion_tokens instead.
-		"max_tokens": p.cfg.MaxOutputTokens,
-		"messages":   []map[string]string{{"role": "user", "content": prompt}},
-		"response_format": map[string]any{
-			"type": "json_schema",
-			"json_schema": map[string]any{
-				"name":   "findings",
-				"strict": true,
-				"schema": findingsSchema(),
-			},
-		},
-	})
-	url := strings.TrimRight(p.cfg.BaseURL, "/") + "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return "", 0, 0, err
-	}
-	req.Header.Set("Content-Type", "application/json")
+	headers := map[string]string{}
 	if key := os.Getenv(p.cfg.APIKeyEnv); key != "" {
-		req.Header.Set("Authorization", "Bearer "+key)
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", 0, 0, err
-	}
-	if resp.StatusCode/100 != 2 {
-		return "", 0, 0, fmt.Errorf("%s: %s", resp.Status, strings.TrimSpace(string(data)))
+		headers["Authorization"] = "Bearer " + key
 	}
 	var out struct {
 		Choices []struct {
@@ -159,8 +178,26 @@ func (p openaiProvider) complete(ctx context.Context, prompt string) (string, in
 			CompletionTokens int64 `json:"completion_tokens"`
 		} `json:"usage"`
 	}
-	if err := json.Unmarshal(data, &out); err != nil || len(out.Choices) == 0 {
-		return "", 0, 0, fmt.Errorf("unexpected answer from %s: %s", url, strings.TrimSpace(string(data)))
+	err := postJSON(ctx, strings.TrimRight(p.cfg.BaseURL, "/")+"/chat/completions", headers, map[string]any{
+		"model": p.cfg.Model,
+		// The key max_tokens works on Ollama, OpenRouter and Groq. The OpenAI
+		// reasoning models need max_completion_tokens.
+		"max_tokens": p.cfg.MaxOutputTokens,
+		"messages":   userMessage(prompt),
+		"response_format": map[string]any{
+			"type": "json_schema",
+			"json_schema": map[string]any{
+				"name":   "findings",
+				"strict": true,
+				"schema": findingsSchema(),
+			},
+		},
+	}, &out)
+	if err != nil {
+		return "", 0, 0, err
+	}
+	if len(out.Choices) == 0 {
+		return "", 0, 0, errors.New("the answer has no choices")
 	}
 	in, used := out.Usage.PromptTokens, out.Usage.CompletionTokens
 	c := out.Choices[0]
@@ -180,7 +217,8 @@ type claudeProvider struct {
 }
 
 func (p claudeProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// ponytail: the count endpoint needs an API key. Estimate as openai does.
+	// The count endpoint needs an API key. The estimate is the same as for
+	// the openai provider.
 	return int64(len(prompt) / 4), nil
 }
 
@@ -190,9 +228,14 @@ func (p claudeProvider) complete(ctx context.Context, prompt string) (string, in
 	// No tools and no MCP servers: the model must judge only the prompt.
 	cmd := exec.CommandContext(ctx, "claude", "-p", "--output-format", "json",
 		"--model", p.cfg.Model, "--json-schema", string(schema),
-		"--tools", "", "--strict-mcp-config",
-		"--system-prompt", "You review changes to a code repository against the rules of that repository.")
+		"--tools", "", "--strict-mcp-config")
 	cmd.Stdin = strings.NewReader(prompt)
+	// The command must use its own login. An API key in the environment
+	// takes precedence over the login, and a key the API rejects makes the
+	// command retry for minutes, which looks like a hang.
+	cmd.Env = slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		return strings.HasPrefix(kv, "ANTHROPIC_API_KEY=") || strings.HasPrefix(kv, "ANTHROPIC_AUTH_TOKEN=")
+	})
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	data, err := cmd.Output()
@@ -231,7 +274,8 @@ type copilotProvider struct {
 }
 
 func (p copilotProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// ponytail: the command has no count endpoint. Estimate as openai does.
+	// The command has no count endpoint. The estimate is the same as for
+	// the openai provider.
 	return int64(len(prompt) / 4), nil
 }
 
@@ -239,8 +283,8 @@ func (p copilotProvider) complete(ctx context.Context, prompt string) (string, i
 	// The prompt goes on stdin: the command reads stdin as the prompt when
 	// stdin is not a terminal. No tools and no MCP servers: the model must
 	// judge only the prompt.
-	// ponytail: --available-tools with an empty value means every tool, so
-	// name a tool that does not exist.
+	// The flag --available-tools with an empty value permits every tool.
+	// Thus the value names a tool that does not exist.
 	cmd := exec.CommandContext(ctx, "copilot", "--silent", "--model", p.cfg.Model,
 		"--available-tools=none", "--disable-builtin-mcps", "--no-custom-instructions",
 		"--no-ask-user", "--no-auto-update", "--no-color")
@@ -251,7 +295,8 @@ func (p copilotProvider) complete(ctx context.Context, prompt string) (string, i
 	if err != nil {
 		return "", 0, 0, fmt.Errorf("copilot: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
-	// ponytail: the command reports no token usage. Both counts are estimates.
+	// The command does not report the token usage. The two counts are
+	// estimates.
 	return string(data), int64(len(prompt) / 4), int64(len(data) / 4), nil
 }
 

@@ -14,7 +14,7 @@ func git(args ...string) (string, error) {
 	return command("git", args...)
 }
 
-// command is a var so tests can stand in for the real process.
+// command is a variable, so that a test can replace the real process.
 var command = func(name string, args ...string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd := exec.Command(name, args...)
@@ -30,7 +30,8 @@ var command = func(name string, args ...string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// Scope says which part of the repo a run checks. At most one field is set.
+// Scope says which part of the repo a run checks. At most one field has a
+// value.
 // The zero Scope is the last commit, or the pull request in GitHub Actions.
 type Scope struct {
 	Base        string

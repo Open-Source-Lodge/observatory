@@ -74,7 +74,7 @@ func cmdRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	report, err := runCheck(context.Background(), scope)
+	report, err := runCheck(context.Background(), scope, nil)
 	if err != nil {
 		return err
 	}
@@ -85,15 +85,17 @@ func cmdRun(args []string) error {
 	return nil
 }
 
-// runCheck loads the rules and the changes, and asks the model.
-func runCheck(ctx context.Context, scope Scope) (Report, error) {
+// runCheck loads the changes and asks the model about rules. A nil rules
+// loads every rule.
+func runCheck(ctx context.Context, scope Scope, rules []Rule) (Report, error) {
 	dir, err := rulesDir()
 	if err != nil {
 		return Report{}, err
 	}
-	rules, err := loadRules(dir)
-	if err != nil {
-		return Report{}, err
+	if rules == nil {
+		if rules, err = loadRules(dir); err != nil {
+			return Report{}, err
+		}
 	}
 	diff, err := changes(&scope)
 	if err != nil {
@@ -105,13 +107,14 @@ func runCheck(ctx context.Context, scope Scope) (Report, error) {
 // printReport writes one line per rule, and the cost. In GitHub Actions it
 // also writes an annotation per failure, so the failure shows on the file.
 func printReport(r Report) {
+	fmt.Println("model: " + r.Model)
 	fmt.Println("checked " + r.Scope)
 	for _, f := range r.Findings {
 		mark := "PASS"
 		if !f.Pass {
 			mark = "FAIL"
 		}
-		fmt.Printf("%s  %s  %s\n", mark, f.ID, f.Reason)
+		fmt.Printf("%s  %s  %s%s\n", mark, f.ID, f.Reason, tokensNote(f))
 		if !f.Pass && os.Getenv("GITHUB_ACTIONS") != "" {
 			file := ""
 			if len(f.Files) > 0 {
@@ -121,6 +124,15 @@ func printReport(r Report) {
 		}
 	}
 	fmt.Printf("tokens: %d in, %d out\n", r.InputTokens, r.OutputTokens)
+}
+
+// tokensNote is the cost of one rule, or empty when the rule shared its
+// request with the other rules.
+func tokensNote(f Finding) string {
+	if f.InputTokens == 0 && f.OutputTokens == 0 {
+		return ""
+	}
+	return fmt.Sprintf("  (%d in, %d out)", f.InputTokens, f.OutputTokens)
 }
 
 func cmdDoctor(args []string) error {
@@ -137,7 +149,7 @@ func cmdDoctor(args []string) error {
 		fmt.Printf("✓ %s\n", name)
 	}
 	_, err := exec.LookPath("git")
-	report("git is installed", err)
+	report("the git command", err)
 	dir, err := rulesDir()
 	report("inside a git repository", err)
 	if err == nil {
@@ -156,7 +168,7 @@ func cmdDoctor(args []string) error {
 	case cfg.Provider == "claude", cfg.Provider == "copilot":
 		// The command holds its own login.
 	case os.Getenv(cfg.APIKeyEnv) == "" && (cfg.Provider != "anthropic" || os.Getenv("ANTHROPIC_AUTH_TOKEN") == ""):
-		report("API credentials", errors.New(cfg.APIKeyEnv+" is not set"))
+		report("API credentials", errors.New(cfg.APIKeyEnv+" is empty"))
 	default:
 		report("API credentials", nil)
 	}

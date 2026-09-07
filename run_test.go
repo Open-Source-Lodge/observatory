@@ -49,8 +49,20 @@ func TestParseFindings(t *testing.T) {
 	if !(Report{Findings: got}).Failed() {
 		t.Error("report with a failure reports no failure")
 	}
-	if got, err := parseFindings("Here it is:\n```json\n{\"results\":[]}\n```\nDone {see above}.", testRules); err != nil || len(got) != len(testRules) {
-		t.Errorf("fenced JSON: %v %v", got, err)
+	one := `{"id":"aaaa0001","pass":true,"reason":"ok","files":[]}`
+	for name, answer := range map[string]string{
+		"fenced":     "Here it is:\n```json\n{\"results\":[" + one + "]}\n```\nDone {see above}.",
+		"bare array": "[" + one + "]",
+		"one object": one,
+		"other key":  `{"verdicts":{"first":` + one + `}}`,
+	} {
+		got, err := parseFindings(answer, testRules)
+		if err != nil || len(got) != 2 || !got[0].Pass || got[1].Pass {
+			t.Errorf("%s: %v %v", name, got, err)
+		}
+	}
+	if _, err := parseFindings(`{"results":[]}`, testRules); err == nil || !strings.Contains(err.Error(), `{"results":[]}`) {
+		t.Errorf("an answer with no verdict must be an error that shows the answer, got %v", err)
 	}
 	if _, err := parseFindings("not json", testRules); err == nil {
 		t.Error("expected an error for a non-JSON answer")
@@ -106,11 +118,43 @@ func TestOpenAIProvider(t *testing.T) {
 	}
 }
 
+func TestAnthropicProvider(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("x-api-key") != "k" || r.Header.Get("anthropic-version") == "" {
+			t.Errorf("bad headers: %v", r.Header)
+		}
+		switch r.URL.Path {
+		case "/v1/messages/count_tokens":
+			w.Write([]byte(`{"input_tokens":5}`))
+		case "/v1/messages":
+			json.NewDecoder(r.Body).Decode(&got)
+			w.Write([]byte(`{"content":[{"type":"text","text":"{\"results\":[]}"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}`))
+		default:
+			t.Errorf("bad path: %s", r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("ANTHROPIC_API_KEY", "k")
+	p := anthropicProvider{cfg: Config{Model: "m", BaseURL: srv.URL + "/", APIKeyEnv: "ANTHROPIC_API_KEY", MaxOutputTokens: 9}}
+	if n, err := p.countTokens(context.Background(), "hello"); err != nil || n != 5 {
+		t.Fatalf("count: got %d %v", n, err)
+	}
+	text, in, out, err := p.complete(context.Background(), "hello")
+	if err != nil || text != `{"results":[]}` || in != 7 || out != 3 {
+		t.Fatalf("got %q %d %d %v", text, in, out, err)
+	}
+	if got["model"] != "m" || got["max_tokens"] != 9.0 || got["output_config"] == nil {
+		t.Errorf("request body: %v", got)
+	}
+}
+
 func TestClaudeProvider(t *testing.T) {
 	dir := t.TempDir()
-	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "in") + "\necho '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ignored\",\"structured_output\":{\"results\":[]},\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":5,\"output_tokens\":3}}'\n"
+	script := "#!/bin/sh\ncat > " + filepath.Join(dir, "in") + "\necho \"${ANTHROPIC_API_KEY-unset}\" > " + filepath.Join(dir, "key") + "\necho '{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"result\":\"ignored\",\"structured_output\":{\"results\":[]},\"usage\":{\"input_tokens\":2,\"cache_read_input_tokens\":5,\"output_tokens\":3}}'\n"
 	os.WriteFile(filepath.Join(dir, "claude"), []byte(script), 0o755)
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("ANTHROPIC_API_KEY", "stale")
 	p, err := newProvider(Config{Provider: "claude", Model: "m"})
 	if err != nil {
 		t.Fatal(err)
@@ -121,6 +165,9 @@ func TestClaudeProvider(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "in")); string(got) != "hello" {
 		t.Errorf("stdin: %q", got)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "key")); string(got) != "unset\n" {
+		t.Errorf("the command got ANTHROPIC_API_KEY: %q", got)
 	}
 }
 
@@ -142,5 +189,31 @@ func TestCopilotProvider(t *testing.T) {
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "args")); !strings.Contains(string(got), "--model m --available-tools=none") {
 		t.Errorf("args: %q", got)
+	}
+}
+
+type fakeProvider struct{}
+
+func (fakeProvider) countTokens(context.Context, string) (int64, error) { return 1, nil }
+func (fakeProvider) complete(context.Context, string) (string, int64, int64, error) {
+	return `{"results":[{"id":"aaaa0001","pass":true,"reason":"ok","files":[]}]}`, 7, 3, nil
+}
+
+func TestAskPerRuleTokens(t *testing.T) {
+	cfg := Config{Model: "m", MaxTokens: 100}
+	report, err := ask(context.Background(), fakeProvider{}, cfg, testRules[:1], Scope{}, "+x")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Model != "m" || report.InputTokens != 7 || report.OutputTokens != 3 {
+		t.Errorf("report: %+v", report)
+	}
+	if got := tokensNote(report.Findings[0]); got != "  (7 in, 3 out)" {
+		t.Errorf("tokensNote = %q", got)
+	}
+	// Two rules share one request: no per-rule tokens.
+	report, _ = ask(context.Background(), fakeProvider{}, cfg, testRules, Scope{}, "+x")
+	if tokensNote(report.Findings[0]) != "" {
+		t.Errorf("shared request got per-rule tokens: %+v", report.Findings[0])
 	}
 }

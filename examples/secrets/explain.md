@@ -19,5 +19,5 @@ secret.
 
 ## Note
 
-This rule is a second line of defence. Use a pre-commit hook or a secret
-scanner as the first line, because those tools run before the commit.
+This rule is the second check. Use a pre-commit hook or a secret scanner
+as the first check, because those tools run before the commit.

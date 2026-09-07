@@ -3,7 +3,7 @@
 ## Why
 
 A `print` call writes to stdout and has no level, no timestamp and no module
-name. The logger has all three, and an operator can turn a module up or down
+name. The logger has all three, and an operator can change the level of a module
 without a change to the code.
 
 ## What the rule covers

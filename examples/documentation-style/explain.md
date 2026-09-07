@@ -15,7 +15,7 @@ stays correct.
 
 ## What the rule does not cover
 
-- Code, including identifiers.
+- Code, with the identifiers.
 - The output of a program, quoted in a code block.
 - Technical names, such as `rule`, `commit` and `token`.
 

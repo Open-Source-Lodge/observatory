@@ -19,9 +19,6 @@ type Rule struct {
 	Dir  string
 }
 
-// Explain is the path of the long-form explanation, meant for humans.
-func (r Rule) Explain() string { return filepath.Join(r.Dir, "explain.md") }
-
 // Summary is the first line of the rule after the title, for a list.
 func (r Rule) Summary() string {
 	for _, line := range strings.Split(r.Text, "\n") {
@@ -34,7 +31,7 @@ func (r Rule) Summary() string {
 }
 
 // loadRules reads every `<dir>/<id>/rule.md`, sorted by ID. A directory
-// without a rule.md is not a rule and is skipped.
+// without a rule.md is not a rule, and loadRules ignores it.
 func loadRules(dir string) ([]Rule, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -105,8 +102,9 @@ const idPrefix = "OBS-"
 
 // newID is one more than the highest ID in dir.
 //
-// ponytail: sequential IDs read well, but two branches that each add a rule
-// get the same ID. Rename one directory when that merge happens.
+// newID makes the next sequential ID. Sequential IDs are easy to read, but
+// two branches that each add a rule get the same ID. Rename one directory
+// when that merge occurs.
 func newID(dir string) (string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -125,7 +123,7 @@ func newID(dir string) (string, error) {
 // deleteRule removes the directory of the rule.
 func deleteRule(r Rule) error {
 	if r.Dir == "" || r.ID == "" {
-		return errors.New("refusing to delete a rule without a directory")
+		return errors.New("the rule has no directory, so there is nothing to delete")
 	}
 	return os.RemoveAll(r.Dir)
 }

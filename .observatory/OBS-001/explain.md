@@ -15,7 +15,7 @@ translation stays correct.
 
 ## What the rule does not cover
 
-- Code, including identifiers.
+- Code, with the identifiers.
 - The output of a program, quoted in a code block.
 - Rule files under `.observatory/` in other repositories.
 

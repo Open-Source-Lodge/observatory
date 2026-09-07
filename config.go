@@ -34,7 +34,7 @@ type Config struct {
 }
 
 func defaultConfig() Config {
-	return Config{Provider: "anthropic", Model: "claude-opus-5", APIKeyEnv: "ANTHROPIC_API_KEY", MaxTokens: 200000, MaxOutputTokens: 8000}
+	return Config{Provider: "anthropic", Model: "claude-opus-5", BaseURL: "https://api.anthropic.com", APIKeyEnv: "ANTHROPIC_API_KEY", MaxTokens: 200000, MaxOutputTokens: 8000}
 }
 
 // configTemplate is what `init` writes. Keep it in sync with defaultConfig.
@@ -82,7 +82,11 @@ func loadConfig(dir string) Config {
 	if v := value("model"); v != "" {
 		cfg.Model = v
 	}
-	cfg.BaseURL = value("base_url")
+	if v := value("base_url"); v != "" {
+		cfg.BaseURL = v
+	} else if cfg.Provider == "openai" {
+		cfg.BaseURL = "https://api.openai.com/v1"
+	}
 	if v := value("api_key_env"); v != "" {
 		cfg.APIKeyEnv = v
 	} else if cfg.Provider == "openai" {
@@ -96,9 +100,6 @@ func loadConfig(dir string) Config {
 	}
 	if on, err := strconv.ParseBool(value("per_rule")); err == nil {
 		cfg.PerRule = on
-	}
-	if cfg.Provider == "openai" && cfg.BaseURL == "" {
-		cfg.BaseURL = "https://api.openai.com/v1"
 	}
 	return cfg
 }
