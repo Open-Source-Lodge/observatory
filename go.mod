@@ -1,6 +1,7 @@
 module github.com/Open-Source-Lodge/observatory
 
 go 1.26
+
 toolchain go1.26.5
 
 require (
