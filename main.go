@@ -17,7 +17,6 @@ Usage:
   observatory list                    list the rules
   observatory add <title>             make a rule and print its directory
   observatory run [scope]             check the changes against the rules
-  observatory doctor                  check that everything observatory needs works
   observatory version                 show the observatory version
   observatory help                    show this help
 
@@ -54,8 +53,6 @@ func dispatch(cmd string, args []string) error {
 		return cmdAdd(args)
 	case "run":
 		return cmdRun(args)
-	case "doctor":
-		return cmdDoctor(args)
 	case "version", "-v", "--version":
 		fmt.Println(version())
 		return nil

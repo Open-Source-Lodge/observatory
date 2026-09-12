@@ -37,7 +37,6 @@ observatory init                    make the .observatory directory and its conf
 observatory list                    list the rules
 observatory add <title>             make a rule and print its directory
 observatory run [scope]             check the changes against the rules
-observatory doctor                  check that everything observatory needs works
 observatory version                 show the observatory version
 observatory help                    show the help
 ```
