@@ -183,6 +183,7 @@ func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope,
 func prompt(rules []Rule, scope Scope, diff string) string {
 	var b strings.Builder
 	b.WriteString("You review changes to a code repository against the rules of that repository.\n")
+	b.WriteString("You have no tools. Do not call a tool, read a file, or run a command: the changes below are all you get.\n")
 	b.WriteString("For each rule, decide whether the changes below break it. Judge only what the changes show; ")
 	b.WriteString("a rule that the changes do not touch passes. Quote the file and the line that breaks a rule in the reason.\n\n")
 	b.WriteString("Answer with JSON: {\"results\": [{\"id\", \"pass\", \"reason\", \"files\"}]}, one entry per rule, in the order given. ")
@@ -225,18 +226,32 @@ func findingsSchema() map[string]any {
 // shows the answer.
 func parseFindings(text string, rules []Rule) ([]Finding, error) {
 	// A model without a JSON schema can wrap the answer in a code fence, add
-	// text around it, or leave out the {"results": ...} wrapper. Decode the
-	// first JSON value and collect every object in it that has an id and a
-	// pass.
-	if i := strings.IndexAny(text, "{["); i > 0 {
-		text = text[i:]
-	}
-	var value any
-	if err := json.NewDecoder(strings.NewReader(text)).Decode(&value); err != nil {
-		return nil, fmt.Errorf("the model did not answer with JSON: %w: %s", err, snippet(text))
-	}
+	// text around it, leave out the {"results": ...} wrapper, or put other
+	// JSON first, such as a tool call that it made up. Decode every JSON
+	// value in the answer and collect each object that has an id and a pass.
 	byID := map[string]Finding{}
-	collectFindings(value, byID)
+	isJSON := false
+	for rest := text; ; {
+		i := strings.IndexAny(rest, "{[")
+		if i < 0 {
+			break
+		}
+		rest = rest[i:]
+		var value any
+		dec := json.NewDecoder(strings.NewReader(rest))
+		if err := dec.Decode(&value); err != nil {
+			// ponytail: no JSON value starts here, so go on at the next
+			// brace. One try per brace is enough for an answer this size.
+			rest = rest[1:]
+			continue
+		}
+		isJSON = true
+		collectFindings(value, byID)
+		rest = rest[dec.InputOffset():]
+	}
+	if !isJSON {
+		return nil, errors.New("the model did not answer with JSON: " + snippet(text))
+	}
 	if len(byID) == 0 {
 		return nil, errors.New("the model gave no verdict: " + snippet(text))
 	}
