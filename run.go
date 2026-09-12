@@ -117,8 +117,12 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope) (Report, 
 	// Every rule ignored everything it saw. That is a pass, unless there was
 	// nothing to see in the first place.
 	if !asked {
-		if all, _ := changes(scope, nil); strings.TrimSpace(all) == "" {
-			return Report{}, errors.New("nothing to check: " + scope.String() + " is empty")
+		all, err := changes(scope, nil)
+		if err != nil {
+			return report, err
+		}
+		if strings.TrimSpace(all) == "" {
+			return report, errors.New("nothing to check: " + scope.String() + " is empty")
 		}
 	}
 	sortFindings(report.Findings, rules)

@@ -278,3 +278,21 @@ func TestCheckEmptyScope(t *testing.T) {
 		t.Errorf("empty scope gave %v", err)
 	}
 }
+
+// TestCheckEmptyScopeGitError: the second call to git decides between an
+// empty scope and a rule that ignores everything. Its error must reach the
+// user, and not become "nothing to check".
+func TestCheckEmptyScopeGitError(t *testing.T) {
+	status = func(string) func() { return func() {} }
+	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
+	rules := []Rule{{ID: "aaaa0001", Title: "Use httpx", Text: "x", Ignore: []string{"*.py"}}}
+	show := "show --format=commit %H%n%s%n%n%b --patch HEAD"
+	// The call with the pathspecs answers. The call without them does not.
+	stubGit(t, map[string]string{
+		show + " -- :(exclude,top,glob)**/*.py :(exclude,top,glob)**/*.py/**": "",
+	})
+	_, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
+	if err == nil || strings.Contains(err.Error(), "nothing to check") {
+		t.Errorf("the git error did not reach the caller: %v", err)
+	}
+}
