@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
 	"strings"
 )
@@ -99,23 +98,31 @@ func parseScope(args []string) (Scope, error) {
 	return s, nil
 }
 
-// changes collects the text the model reads, and resolves the zero scope.
-// The text is a diff, or every tracked file for --all.
-func changes(s *Scope) (string, error) {
-	if *s == (Scope{}) {
-		if ref := os.Getenv("GITHUB_BASE_REF"); ref != "" {
-			s.Base = "origin/" + ref
-		} else {
-			s.Commit = "HEAD"
-		}
+// resolve fills the empty scope: the pull request in GitHub Actions, or the
+// last commit.
+func (s *Scope) resolve() {
+	if *s != (Scope{}) {
+		return
 	}
+	if ref := os.Getenv("GITHUB_BASE_REF"); ref != "" {
+		s.Base = "origin/" + ref
+	} else {
+		s.Commit = "HEAD"
+	}
+}
+
+// changes collects the text the model reads. The text is a diff, or every
+// tracked file for --all. git leaves out the files that the ignore patterns
+// of the rule match.
+func changes(s Scope, ignore []string) (string, error) {
+	paths := pathspecs(ignore)
 	switch {
 	case s.All:
-		return allFiles()
+		return allFiles(paths)
 	case s.Uncommitted:
-		return git("diff", "HEAD")
+		return git(append([]string{"diff", "HEAD"}, paths...)...)
 	case s.Commit != "":
-		return git("show", "--format=commit %H%n%s%n%n%b", "--patch", s.Commit)
+		return git(append([]string{"show", "--format=commit %H%n%s%n%n%b", "--patch", s.Commit}, paths...)...)
 	}
 	// The diff is from the fork point, so commits already on the base branch
 	// do not count. It goes up to the working tree, so an uncommitted change
@@ -124,16 +131,40 @@ func changes(s *Scope) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cannot find where %s and HEAD diverge: %w", s.Base, err)
 	}
-	return git("diff", fork)
+	return git(append([]string{"diff", fork}, paths...)...)
+}
+
+// pathspecs turns the ignore patterns of a rule into git pathspecs that
+// exclude the files, with the `--` separator in front. The result is empty
+// when there are no patterns.
+//
+// A pattern is a file, a directory, or a glob. A pattern with a slash starts
+// at the root of the repository. A pattern without a slash, or with the
+// prefix `**/`, matches at every depth. Each pattern gives two pathspecs: one
+// for the path, and one for the files below it, because a directory does not
+// exclude its contents by itself.
+func pathspecs(ignore []string) []string {
+	if len(ignore) == 0 {
+		return nil
+	}
+	out := []string{"--"}
+	for _, p := range ignore {
+		p = strings.TrimSuffix(p, "/")
+		if !strings.Contains(p, "/") {
+			p = "**/" + p
+		}
+		out = append(out, ":(exclude,top,glob)"+p, ":(exclude,top,glob)"+p+"/**")
+	}
+	return out
 }
 
 // allFiles renders every tracked text file with a header, like a diff would.
-func allFiles() (string, error) {
+func allFiles(paths []string) (string, error) {
 	root, err := git("rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
 	}
-	out, err := git("ls-files")
+	out, err := git(append([]string{"ls-files"}, paths...)...)
 	if err != nil {
 		return "", err
 	}
@@ -149,71 +180,4 @@ func allFiles() (string, error) {
 		fmt.Fprintf(&b, "==== %s ====\n%s\n", path, data)
 	}
 	return b.String(), nil
-}
-
-// withoutIgnored removes the files that match a pattern from the changes.
-// A change is a git diff, or the output of allFiles. The text before the
-// first file, such as the commit message, stays. The result is empty when
-// no file remains.
-func withoutIgnored(diff string, patterns []string) string {
-	if len(patterns) == 0 {
-		return diff
-	}
-	var b strings.Builder
-	keep, kept := true, false
-	for _, line := range strings.SplitAfter(diff, "\n") {
-		if file, ok := changedFile(line); ok {
-			keep = !ignored(patterns, file)
-			kept = kept || keep
-		}
-		if keep {
-			b.WriteString(line)
-		}
-	}
-	if !kept {
-		return ""
-	}
-	return b.String()
-}
-
-// changedFile is the path in the header line of one file: `diff --git a/x b/x`
-// from git, or `==== x ====` from allFiles.
-func changedFile(line string) (string, bool) {
-	line = strings.TrimRight(line, "\n")
-	if rest, ok := strings.CutPrefix(line, "==== "); ok {
-		return strings.TrimSuffix(rest, " ===="), true
-	}
-	rest, ok := strings.CutPrefix(line, "diff --git ")
-	if !ok {
-		return "", false
-	}
-	if _, file, found := strings.Cut(rest, " b/"); found {
-		return file, true
-	}
-	// ponytail: git with diff.noprefix shows `diff --git x x`.
-	return rest[strings.LastIndexByte(rest, ' ')+1:], true
-}
-
-// ignored reports whether a file matches one of the patterns. A pattern is a
-// file, a directory, or a glob in the syntax of path.Match. A pattern with a
-// slash starts at the root of the repository. A pattern without a slash, or
-// with the prefix `**/`, matches at every depth. A directory matches every
-// file in it.
-func ignored(patterns []string, file string) bool {
-	segs := strings.Split(file, "/")
-	for _, p := range patterns {
-		p = strings.TrimSuffix(p, "/")
-		anywhere := !strings.Contains(p, "/")
-		if rest, ok := strings.CutPrefix(p, "**/"); ok {
-			p, anywhere = rest, true
-		}
-		for start := 0; start < len(segs) && (anywhere || start == 0); start++ {
-			for end := start + 1; end <= len(segs); end++ {
-				if ok, _ := path.Match(p, strings.Join(segs[start:end], "/")); ok {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }

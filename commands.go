@@ -97,11 +97,7 @@ func runCheck(ctx context.Context, scope Scope, rules []Rule) (Report, error) {
 			return Report{}, err
 		}
 	}
-	diff, err := changes(&scope)
-	if err != nil {
-		return Report{}, err
-	}
-	return check(ctx, loadConfig(dir), rules, scope, diff)
+	return check(ctx, loadConfig(dir), rules, scope)
 }
 
 // printReport writes one line per rule, and the cost. In GitHub Actions it

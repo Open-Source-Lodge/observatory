@@ -252,7 +252,13 @@ func TestCheckIgnore(t *testing.T) {
 		t.Errorf("batches per rule: %v", got)
 	}
 	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
-	report, err := check(context.Background(), Config{Model: "m", MaxTokens: 100}, rules, Scope{Commit: "HEAD"}, "diff --git a/main.py b/main.py\n+print(1)\n")
+	show := "show --format=commit %H%n%s%n%n%b --patch HEAD"
+	stubGit(t, map[string]string{
+		// The pathspecs of the first rule leave no file, so git answers nothing.
+		show + " -- :(exclude,top,glob)**/*.py :(exclude,top,glob)**/*.py/**": "",
+		show: "diff --git a/main.py b/main.py\n+print(1)\n",
+	})
+	report, err := check(context.Background(), Config{Model: "m", MaxTokens: 100}, rules, Scope{Commit: "HEAD"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,5 +267,17 @@ func TestCheckIgnore(t *testing.T) {
 	}
 	if report.Findings[1].ID != "aaaa0001" || !report.Findings[1].Pass || report.InputTokens != 7 {
 		t.Errorf("asked rule: %+v %d", report.Findings, report.InputTokens)
+	}
+}
+
+// TestCheckEmptyScope: a scope with no change at all is an error, not a
+// silent pass.
+func TestCheckEmptyScope(t *testing.T) {
+	status = func(string) func() { return func() {} }
+	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
+	stubGit(t, map[string]string{"show --format=commit %H%n%s%n%n%b --patch HEAD": ""})
+	_, err := check(context.Background(), Config{Model: "m", MaxTokens: 100}, testRules, Scope{Commit: "HEAD"})
+	if err == nil || !strings.Contains(err.Error(), "nothing to check") {
+		t.Errorf("empty scope gave %v", err)
 	}
 }

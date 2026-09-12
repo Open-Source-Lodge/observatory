@@ -83,8 +83,8 @@ src/legacy.py    # one file
 ```
 
 A pattern with a slash starts at the root of the repository. A pattern
-without a slash matches at every depth. Observatory removes the files that
-match from the changes before it sends the rule to the model. A rule that
+without a slash matches at every depth. Observatory gives the patterns to
+git, and git leaves the files that match out of the changes. A rule that
 ignores every file in the changes passes without a request.
 
 The `examples` directory holds example rules of different types. Copy one

@@ -73,13 +73,11 @@ func (r Report) Failed() bool {
 // changes share one request, or each rule has its own request when the
 // config says per_rule. A rule that ignores every file in the changes
 // passes without a request.
-func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff string) (Report, error) {
+func check(ctx context.Context, cfg Config, rules []Rule, scope Scope) (Report, error) {
 	if len(rules) == 0 {
 		return Report{}, errors.New("no rules — add one with 'observatory add <title>'")
 	}
-	if strings.TrimSpace(diff) == "" {
-		return Report{}, errors.New("nothing to check: " + scope.String() + " is empty")
-	}
+	scope.resolve()
 	p, err := newProvider(cfg)
 	if err != nil {
 		return Report{}, err
@@ -87,18 +85,25 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 	head := fmt.Sprintf("check of %s with %s %s", scope, cfg.Provider, cfg.Model)
 	report := Report{Scope: scope.String(), Model: cfg.Model}
 	groups := batches(rules, cfg.PerRule)
+	asked := false
 	for i, g := range groups {
 		label := head + ", " + rulesLabel(g)
 		if len(groups) > 1 {
 			label = fmt.Sprintf("%s, %d/%d %s", head, i+1, len(groups), rulesLabel(g))
 		}
-		seen := withoutIgnored(diff, g[0].Ignore)
-		if seen == "" {
+		// git leaves out the files the rules of this group ignore, so an
+		// empty result means the group sees nothing.
+		seen, err := changes(scope, g[0].Ignore)
+		if err != nil {
+			return report, err
+		}
+		if strings.TrimSpace(seen) == "" {
 			for _, r := range g {
 				report.Findings = append(report.Findings, Finding{ID: r.ID, Pass: true, Reason: "the rule ignores every file in the changes"})
 			}
 			continue
 		}
+		asked = true
 		stop := status(label)
 		one, err := ask(ctx, p, cfg, g, scope, seen)
 		stop()
@@ -108,6 +113,13 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope, diff stri
 		report.Findings = append(report.Findings, one.Findings...)
 		report.InputTokens += one.InputTokens
 		report.OutputTokens += one.OutputTokens
+	}
+	// Every rule ignored everything it saw. That is a pass, unless there was
+	// nothing to see in the first place.
+	if !asked {
+		if all, _ := changes(scope, nil); strings.TrimSpace(all) == "" {
+			return Report{}, errors.New("nothing to check: " + scope.String() + " is empty")
+		}
 	}
 	sortFindings(report.Findings, rules)
 	return report, nil
