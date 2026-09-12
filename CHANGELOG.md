@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/Open-Source-Lodge/observatory/compare/v1.0.0...v1.0.1) (2026-09-12)
+
+
+### Bug Fixes
+
+* new rule ([#9](https://github.com/Open-Source-Lodge/observatory/issues/9)) ([5d34434](https://github.com/Open-Source-Lodge/observatory/commit/5d34434b207e0659f8d94ad93d24dcf2564189fc))
+
 ## 1.0.0 (2026-09-12)
 
 
