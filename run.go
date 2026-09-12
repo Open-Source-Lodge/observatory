@@ -169,12 +169,8 @@ func rulesLabel(rules []Rule) string {
 func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope, diff string) (Report, error) {
 	report := Report{Scope: scope.String(), Model: cfg.Model}
 	text := prompt(rules, scope, diff)
-	count, err := p.countTokens(ctx, text)
-	if err != nil {
-		return report, fmt.Errorf("count tokens: %w", err)
-	}
-	if count > int64(cfg.MaxTokens) {
-		return report, fmt.Errorf("the prompt is %d tokens, the limit is %d — narrow the scope, or raise max_tokens in %s/config",
+	if count := estimate(text); count > int64(cfg.MaxTokens) {
+		return report, fmt.Errorf("the prompt is about %d tokens, the limit is %d — narrow the scope, or raise max_tokens in %s/config",
 			count, cfg.MaxTokens, rulesDirName)
 	}
 	answer, in, out, err := p.complete(ctx, text, findingsSchema())
@@ -190,8 +186,7 @@ func ask(ctx context.Context, p provider, cfg Config, rules []Rule, scope Scope,
 }
 
 // prompt is the whole request: the rules, the scope, the changes, and what
-// to answer. Everything is in one user message so that count_tokens and the
-// request measure the same text.
+// to answer. Everything goes in one user message.
 func prompt(rules []Rule, scope Scope, diff string) string {
 	var b strings.Builder
 	b.WriteString("You review changes to a code repository against the rules of that repository.\n")

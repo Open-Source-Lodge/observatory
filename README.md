@@ -191,9 +191,9 @@ model = "llama3.3"
 base_url = "http://localhost:11434/v1"
 ```
 
-The `openai` provider has no count of the tokens before the request. It
-estimates the size of the prompt for the `max_tokens` check, and reports the
-true count after the request.
+Observatory estimates the size of the prompt for the `max_tokens` check, at
+four bytes per token. The usage that the provider reports after the request
+gives the true count.
 
 The `claude` provider runs the `claude` command of Claude Code. The command
 uses its own login, so a Claude subscription works without an API key. Log in

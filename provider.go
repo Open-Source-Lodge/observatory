@@ -16,8 +16,6 @@ import (
 
 // provider is the model API that answers a prompt.
 type provider interface {
-	// countTokens is the size of the prompt, for the max_tokens check.
-	countTokens(ctx context.Context, prompt string) (int64, error)
 	// complete returns the JSON answer and the tokens the request used. The
 	// schema is the shape of the answer; a provider without a schema option
 	// ignores it.
@@ -78,6 +76,13 @@ func postJSON(ctx context.Context, url string, headers map[string]string, body, 
 	return nil
 }
 
+// estimate is the size of a text in tokens. Four bytes per token is the
+// usual ratio. The estimate guards max_tokens before the request; the usage
+// in the answer gives the true count.
+func estimate(text string) int64 {
+	return int64(len(text) / 4)
+}
+
 // userMessage is the one message of a request: the whole prompt.
 func userMessage(prompt string) []map[string]string {
 	return []map[string]string{{"role": "user", "content": prompt}}
@@ -98,15 +103,6 @@ func (p anthropicProvider) headers() map[string]string {
 		h["Authorization"] = "Bearer " + token
 	}
 	return h
-}
-
-func (p anthropicProvider) countTokens(ctx context.Context, prompt string) (int64, error) {
-	var out struct {
-		InputTokens int64 `json:"input_tokens"`
-	}
-	err := postJSON(ctx, strings.TrimRight(p.cfg.BaseURL, "/")+"/v1/messages/count_tokens", p.headers(),
-		map[string]any{"model": p.cfg.Model, "messages": userMessage(prompt)}, &out)
-	return out.InputTokens, err
 }
 
 func (p anthropicProvider) complete(ctx context.Context, prompt string, schema map[string]any) (string, int64, int64, error) {
@@ -155,12 +151,6 @@ func (p anthropicProvider) complete(ctx context.Context, prompt string, schema m
 // and most other APIs have one.
 type openaiProvider struct {
 	cfg Config
-}
-
-func (p openaiProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// This API has no count endpoint. Four bytes per token is the usual
-	// estimate. The usage in the answer gives the true count.
-	return int64(len(prompt) / 4), nil
 }
 
 func (p openaiProvider) complete(ctx context.Context, prompt string, schema map[string]any) (string, int64, int64, error) {
@@ -219,12 +209,6 @@ type claudeProvider struct {
 	cfg Config
 }
 
-func (p claudeProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// The count endpoint needs an API key. The estimate is the same as for
-	// the openai provider.
-	return int64(len(prompt) / 4), nil
-}
-
 func (p claudeProvider) complete(ctx context.Context, prompt string, schema map[string]any) (string, int64, int64, error) {
 	schemaJSON, _ := json.Marshal(schema)
 	// The prompt goes on stdin: a large diff does not fit in an argument.
@@ -276,12 +260,6 @@ type copilotProvider struct {
 	cfg Config
 }
 
-func (p copilotProvider) countTokens(_ context.Context, prompt string) (int64, error) {
-	// The command has no count endpoint. The estimate is the same as for
-	// the openai provider.
-	return int64(len(prompt) / 4), nil
-}
-
 func (p copilotProvider) complete(ctx context.Context, prompt string, _ map[string]any) (string, int64, int64, error) {
 	// The prompt goes on stdin: the command reads stdin as the prompt when
 	// stdin is not a terminal. No tools and no MCP servers: the model must
@@ -300,7 +278,7 @@ func (p copilotProvider) complete(ctx context.Context, prompt string, _ map[stri
 	}
 	// The command does not report the token usage. The two counts are
 	// estimates.
-	return string(data), int64(len(prompt) / 4), int64(len(data) / 4), nil
+	return string(data), estimate(prompt), estimate(string(data)), nil
 }
 
 func errMaxOutput(cfg Config) error {
