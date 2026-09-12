@@ -1,4 +1,4 @@
-# Contributing
+# How to contribute
 
 ## Build and test
 
