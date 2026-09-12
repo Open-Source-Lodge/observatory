@@ -55,6 +55,10 @@ func TestParseFindings(t *testing.T) {
 		"bare array": "[" + one + "]",
 		"one object": one,
 		"other key":  `{"verdicts":{"first":` + one + `}}`,
+		// A model that makes up a tool call writes JSON that is not a
+		// verdict. The verdict after it must still count.
+		"made-up tool call": `{"cmd":"sed -n '1,120p' README.md"} to=functions.bash ` +
+			`{"cmd":"nl -ba README.md"}` + "\n" + `{"results":[` + one + `]}`,
 	} {
 		got, err := parseFindings(answer, testRules)
 		if err != nil || len(got) != 2 || !got[0].Pass || got[1].Pass {

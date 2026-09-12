@@ -20,6 +20,11 @@ make build                                                  # then move bin/obse
 go install github.com/Open-Source-Lodge/observatory@latest
 ```
 
+Each [release](https://github.com/Open-Source-Lodge/observatory/releases) has
+binaries for macOS, Linux and Windows, on amd64 and arm64. Download the binary
+for your system, check it against `checksums.txt`, and move it into a
+directory on your PATH.
+
 Observatory needs `git`, and an Anthropic API key in `ANTHROPIC_API_KEY`. See
 "Providers" for the other APIs and for the Claude Code and GitHub Copilot
 commands.
@@ -271,7 +276,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0 # observatory needs the history back to the base branch
-      - uses: Open-Source-Lodge/observatory@main
+      - uses: Open-Source-Lodge/observatory@v1
         with:
           anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
@@ -302,7 +307,7 @@ jobs:
         with:
           fetch-depth: 0
       - run: npm install -g @github/copilot
-      - uses: Open-Source-Lodge/observatory@main
+      - uses: Open-Source-Lodge/observatory@v1
         env:
           COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }} # or GITHUB_TOKEN: ${{ github.token }}
           OBSERVATORY_PROVIDER: copilot
