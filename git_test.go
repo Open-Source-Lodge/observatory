@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -31,7 +32,8 @@ func TestChangesDefaultIsLastCommit(t *testing.T) {
 		"show --format=commit %H%n%s%n%n%b --patch HEAD": "commit abc\n+x",
 	})
 	s := Scope{}
-	got, err := changes(&s)
+	s.resolve()
+	got, err := changes(s, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +48,7 @@ func TestChangesBase(t *testing.T) {
 		"diff abc123":                 "+the diff",
 	})
 	s := Scope{Base: "origin/main"}
-	got, err := changes(&s)
+	got, err := changes(s, nil)
 	if err != nil || got != "+the diff" {
 		t.Errorf("got %q, %v", got, err)
 	}
@@ -58,7 +60,7 @@ func TestChangesBase(t *testing.T) {
 func TestChangesUncommitted(t *testing.T) {
 	stubGit(t, map[string]string{"diff HEAD": "+wip"})
 	s := Scope{Uncommitted: true}
-	if got, err := changes(&s); err != nil || got != "+wip" {
+	if got, err := changes(s, nil); err != nil || got != "+wip" {
 		t.Errorf("got %q, %v", got, err)
 	}
 }
@@ -70,7 +72,8 @@ func TestChangesGitHubBaseRef(t *testing.T) {
 		"diff abc123":                    "+the diff",
 	})
 	s := Scope{}
-	if _, err := changes(&s); err != nil {
+	s.resolve()
+	if _, err := changes(s, nil); err != nil {
 		t.Fatal(err)
 	}
 	if s.Base != "origin/develop" {
@@ -83,54 +86,50 @@ func TestChangesCommit(t *testing.T) {
 		"show --format=commit %H%n%s%n%n%b --patch deadbeef": "commit deadbeef\n+x",
 	})
 	s := Scope{Commit: "deadbeef"}
-	got, err := changes(&s)
+	got, err := changes(s, nil)
 	if err != nil || !strings.HasPrefix(got, "commit deadbeef") {
 		t.Errorf("got %q, %v", got, err)
 	}
 }
 
-func TestIgnored(t *testing.T) {
-	tests := []struct {
-		pattern, file string
-		want          bool
-	}{
-		{"main.py", "main.py", true},
-		{"main.py", "src/main.py", true},
-		{"src/main.py", "src/main.py", true},
-		{"src/main.py", "lib/src/main.py", false},
-		{"vendor/", "vendor/a/b.go", true},
-		{"vendor", "a/vendor/b.go", true},
-		{"vendor", "vendors/b.go", false},
-		{"*.md", "docs/a/b.md", true},
-		{"docs/*", "docs/a/b.md", true},
-		{"docs/*.md", "docs/a/b.md", false},
-		{"**/*_test.go", "a/b/c_test.go", true},
-		{"**/testdata", "a/testdata/x", true},
+// TestPathspecs checks the shape of the pathspecs. git itself decides which
+// file a pathspec matches; `git ls-files -- <pathspec>` shows that.
+func TestPathspecs(t *testing.T) {
+	if got := pathspecs(nil); got != nil {
+		t.Errorf("no patterns gave %v", got)
+	}
+	tests := []struct{ pattern, want string }{
+		// A pattern without a slash matches at every depth.
+		{"main.py", "**/main.py"},
+		// A pattern with a slash starts at the root of the repository.
+		{"src/main.py", "src/main.py"},
+		// A directory loses its slash and keeps the depth.
+		{"vendor/", "**/vendor"},
+		{"docs/*", "docs/*"},
+		{"**/*_test.go", "**/*_test.go"},
 	}
 	for _, tt := range tests {
-		if got := ignored([]string{tt.pattern}, tt.file); got != tt.want {
-			t.Errorf("ignored(%q, %q) = %v, want %v", tt.pattern, tt.file, got, tt.want)
+		got := pathspecs([]string{tt.pattern})
+		want := []string{"--", ":(exclude,top,glob)" + tt.want, ":(exclude,top,glob)" + tt.want + "/**"}
+		if !slices.Equal(got, want) {
+			t.Errorf("pathspecs(%q) = %v, want %v", tt.pattern, got, want)
 		}
+	}
+	if got := pathspecs([]string{"a", "b"}); len(got) != 5 || got[0] != "--" {
+		t.Errorf("two patterns gave %v", got)
 	}
 }
 
-func TestWithoutIgnored(t *testing.T) {
-	diff := "commit abc\nsubject\n\ndiff --git a/main.py b/main.py\n+import requests\ndiff --git a/docs/a.md b/docs/a.md\n+# hi\n"
-	got := withoutIgnored(diff, []string{"*.md"})
-	if got != "commit abc\nsubject\n\ndiff --git a/main.py b/main.py\n+import requests\n" {
-		t.Errorf("got %q", got)
+// TestChangesIgnore checks that the patterns reach git as pathspecs.
+func TestChangesIgnore(t *testing.T) {
+	calls := stubGit(t, map[string]string{
+		"diff HEAD -- :(exclude,top,glob)**/*.md :(exclude,top,glob)**/*.md/**": "+code",
+	})
+	got, err := changes(Scope{Uncommitted: true}, []string{"*.md"})
+	if err != nil || got != "+code" {
+		t.Fatalf("got %q, %v", got, err)
 	}
-	if got := withoutIgnored(diff, nil); got != diff {
-		t.Errorf("no patterns changed the diff: %q", got)
-	}
-	if got := withoutIgnored(diff, []string{"*.md", "main.py"}); got != "" {
-		t.Errorf("every file ignored, got %q", got)
-	}
-	files := "==== a/b.go ====\npackage a\n==== c.md ====\n# c\n"
-	if got := withoutIgnored(files, []string{"a/"}); got != "==== c.md ====\n# c\n" {
-		t.Errorf("all files: got %q", got)
-	}
-	if got := withoutIgnored("diff --git x x\n+1\n", []string{"x"}); got != "" {
-		t.Errorf("noprefix: got %q", got)
+	if len(*calls) != 1 {
+		t.Errorf("calls: %v", *calls)
 	}
 }

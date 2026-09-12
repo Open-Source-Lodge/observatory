@@ -128,22 +128,15 @@ func TestAnthropicProvider(t *testing.T) {
 		if r.Header.Get("x-api-key") != "k" || r.Header.Get("anthropic-version") == "" {
 			t.Errorf("bad headers: %v", r.Header)
 		}
-		switch r.URL.Path {
-		case "/v1/messages/count_tokens":
-			w.Write([]byte(`{"input_tokens":5}`))
-		case "/v1/messages":
-			json.NewDecoder(r.Body).Decode(&got)
-			w.Write([]byte(`{"content":[{"type":"text","text":"{\"results\":[]}"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}`))
-		default:
+		if r.URL.Path != "/v1/messages" {
 			t.Errorf("bad path: %s", r.URL.Path)
 		}
+		json.NewDecoder(r.Body).Decode(&got)
+		w.Write([]byte(`{"content":[{"type":"text","text":"{\"results\":[]}"}],"stop_reason":"end_turn","usage":{"input_tokens":7,"output_tokens":3}}`))
 	}))
 	defer srv.Close()
 	t.Setenv("ANTHROPIC_API_KEY", "k")
 	p := anthropicProvider{cfg: Config{Model: "m", BaseURL: srv.URL + "/", APIKeyEnv: "ANTHROPIC_API_KEY", MaxOutputTokens: 9}}
-	if n, err := p.countTokens(context.Background(), "hello"); err != nil || n != 5 {
-		t.Fatalf("count: got %d %v", n, err)
-	}
 	text, in, out, err := p.complete(context.Background(), "hello", findingsSchema())
 	if err != nil || text != `{"results":[]}` || in != 7 || out != 3 {
 		t.Fatalf("got %q %d %d %v", text, in, out, err)
@@ -198,13 +191,12 @@ func TestCopilotProvider(t *testing.T) {
 
 type fakeProvider struct{}
 
-func (fakeProvider) countTokens(context.Context, string) (int64, error) { return 1, nil }
 func (fakeProvider) complete(context.Context, string, map[string]any) (string, int64, int64, error) {
 	return `{"results":[{"id":"aaaa0001","pass":true,"reason":"ok","files":[]}]}`, 7, 3, nil
 }
 
 func TestAskPerRuleTokens(t *testing.T) {
-	cfg := Config{Model: "m", MaxTokens: 100}
+	cfg := Config{Model: "m", MaxTokens: 100000}
 	report, err := ask(context.Background(), fakeProvider{}, cfg, testRules[:1], Scope{}, "+x")
 	if err != nil {
 		t.Fatal(err)
@@ -214,6 +206,11 @@ func TestAskPerRuleTokens(t *testing.T) {
 	}
 	if got := tokensNote(report.Findings[0]); got != "  (7 in, 3 out)" {
 		t.Errorf("tokensNote = %q", got)
+	}
+	// The estimate guards max_tokens before the request.
+	small := Config{Model: "m", MaxTokens: 1}
+	if _, err := ask(context.Background(), fakeProvider{}, small, testRules[:1], Scope{}, "+x"); err == nil || !strings.Contains(err.Error(), "the limit is 1") {
+		t.Errorf("max_tokens guard gave %v", err)
 	}
 	// Two rules share one request: no per-rule tokens.
 	report, _ = ask(context.Background(), fakeProvider{}, cfg, testRules, Scope{}, "+x")
@@ -252,7 +249,13 @@ func TestCheckIgnore(t *testing.T) {
 		t.Errorf("batches per rule: %v", got)
 	}
 	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
-	report, err := check(context.Background(), Config{Model: "m", MaxTokens: 100}, rules, Scope{Commit: "HEAD"}, "diff --git a/main.py b/main.py\n+print(1)\n")
+	show := "show --format=commit %H%n%s%n%n%b --patch HEAD"
+	stubGit(t, map[string]string{
+		// The pathspecs of the first rule leave no file, so git answers nothing.
+		show + " -- :(exclude,top,glob)**/*.py :(exclude,top,glob)**/*.py/**": "",
+		show: "diff --git a/main.py b/main.py\n+print(1)\n",
+	})
+	report, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -261,5 +264,35 @@ func TestCheckIgnore(t *testing.T) {
 	}
 	if report.Findings[1].ID != "aaaa0001" || !report.Findings[1].Pass || report.InputTokens != 7 {
 		t.Errorf("asked rule: %+v %d", report.Findings, report.InputTokens)
+	}
+}
+
+// TestCheckEmptyScope: a scope with no change at all is an error, not a
+// silent pass.
+func TestCheckEmptyScope(t *testing.T) {
+	status = func(string) func() { return func() {} }
+	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
+	stubGit(t, map[string]string{"show --format=commit %H%n%s%n%n%b --patch HEAD": ""})
+	_, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, testRules, Scope{Commit: "HEAD"})
+	if err == nil || !strings.Contains(err.Error(), "nothing to check") {
+		t.Errorf("empty scope gave %v", err)
+	}
+}
+
+// TestCheckEmptyScopeGitError: the second call to git decides between an
+// empty scope and a rule that ignores everything. Its error must reach the
+// user, and not become "nothing to check".
+func TestCheckEmptyScopeGitError(t *testing.T) {
+	status = func(string) func() { return func() {} }
+	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
+	rules := []Rule{{ID: "aaaa0001", Title: "Use httpx", Text: "x", Ignore: []string{"*.py"}}}
+	show := "show --format=commit %H%n%s%n%n%b --patch HEAD"
+	// The call with the pathspecs answers. The call without them does not.
+	stubGit(t, map[string]string{
+		show + " -- :(exclude,top,glob)**/*.py :(exclude,top,glob)**/*.py/**": "",
+	})
+	_, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
+	if err == nil || strings.Contains(err.Error(), "nothing to check") {
+		t.Errorf("the git error did not reach the caller: %v", err)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
@@ -97,11 +96,7 @@ func runCheck(ctx context.Context, scope Scope, rules []Rule) (Report, error) {
 			return Report{}, err
 		}
 	}
-	diff, err := changes(&scope)
-	if err != nil {
-		return Report{}, err
-	}
-	return check(ctx, loadConfig(dir), rules, scope, diff)
+	return check(ctx, loadConfig(dir), rules, scope)
 }
 
 // printReport writes one line per rule, and the cost. In GitHub Actions it
@@ -133,47 +128,4 @@ func tokensNote(f Finding) string {
 		return ""
 	}
 	return fmt.Sprintf("  (%d in, %d out)", f.InputTokens, f.OutputTokens)
-}
-
-func cmdDoctor(args []string) error {
-	if len(args) > 0 {
-		return errors.New("doctor takes no arguments")
-	}
-	ok := true
-	report := func(name string, err error) {
-		if err != nil {
-			ok = false
-			fmt.Printf("✗ %s: %s\n", name, err)
-			return
-		}
-		fmt.Printf("✓ %s\n", name)
-	}
-	_, err := exec.LookPath("git")
-	report("the git command", err)
-	dir, err := rulesDir()
-	report("inside a git repository", err)
-	if err == nil {
-		_, err := os.Stat(dir)
-		report(rulesDirName+" exists", err)
-		rules, err := loadRules(dir)
-		if err == nil && len(rules) == 0 {
-			err = errors.New("no rules yet — add one with 'observatory add <title>'")
-		}
-		report("rules load", err)
-	}
-	cfg := loadConfig(dir)
-	_, err = newProvider(cfg)
-	report(fmt.Sprintf("provider %s, model %s", cfg.Provider, cfg.Model), err)
-	switch {
-	case cfg.Provider == "claude", cfg.Provider == "copilot":
-		// The command holds its own login.
-	case os.Getenv(cfg.APIKeyEnv) == "" && (cfg.Provider != "anthropic" || os.Getenv("ANTHROPIC_AUTH_TOKEN") == ""):
-		report("API credentials", errors.New(cfg.APIKeyEnv+" is empty"))
-	default:
-		report("API credentials", nil)
-	}
-	if !ok {
-		return errors.New("some checks failed")
-	}
-	return nil
 }

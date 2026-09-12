@@ -37,7 +37,6 @@ observatory init                    make the .observatory directory and its conf
 observatory list                    list the rules
 observatory add <title>             make a rule and print its directory
 observatory run [scope]             check the changes against the rules
-observatory doctor                  check that everything observatory needs works
 observatory version                 show the observatory version
 observatory help                    show the help
 ```
@@ -83,8 +82,8 @@ src/legacy.py    # one file
 ```
 
 A pattern with a slash starts at the root of the repository. A pattern
-without a slash matches at every depth. Observatory removes the files that
-match from the changes before it sends the rule to the model. A rule that
+without a slash matches at every depth. Observatory gives the patterns to
+git, and git leaves the files that match out of the changes. A rule that
 ignores every file in the changes passes without a request.
 
 The `examples` directory holds example rules of different types. Copy one
@@ -192,9 +191,9 @@ model = "llama3.3"
 base_url = "http://localhost:11434/v1"
 ```
 
-The `openai` provider has no count of the tokens before the request. It
-estimates the size of the prompt for the `max_tokens` check, and reports the
-true count after the request.
+Observatory estimates the size of the prompt for the `max_tokens` check, at
+four bytes per token. The usage that the provider reports after the request
+gives the true count.
 
 The `claude` provider runs the `claude` command of Claude Code. The command
 uses its own login, so a Claude subscription works without an API key. Log in
