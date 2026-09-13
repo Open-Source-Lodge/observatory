@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/Open-Source-Lodge/observatory/compare/v1.0.1...v1.0.2) (2026-09-13)
+
+
+### Bug Fixes
+
+* add an animated demo of the interactive mode ([#12](https://github.com/Open-Source-Lodge/observatory/issues/12)) ([72d6f66](https://github.com/Open-Source-Lodge/observatory/commit/72d6f6674f02400fa474839facbcfa0535aa5c46))
+
 ## [1.0.1](https://github.com/Open-Source-Lodge/observatory/compare/v1.0.0...v1.0.1) (2026-09-12)
 
 
