@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/Open-Source-Lodge/observatory/compare/v1.0.2...v1.0.3) (2026-09-13)
+
+
+### Bug Fixes
+
+* move the source files into cmd and internal ([#14](https://github.com/Open-Source-Lodge/observatory/issues/14)) ([6734919](https://github.com/Open-Source-Lodge/observatory/commit/6734919f7105fa657895be1be8969ebeb6d1e973))
+
 ## [1.0.2](https://github.com/Open-Source-Lodge/observatory/compare/v1.0.1...v1.0.2) (2026-09-13)
 
 
