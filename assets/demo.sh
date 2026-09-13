@@ -25,7 +25,7 @@ printf 'import requests\n\ndef fetch(url):\n    return requests.get(url).json()\
 git add -A
 git -c user.name=demo -c user.email=demo@example.com commit -q -m "add the client"
 
-# A local stand-in for the API, so that the demo needs no key and no network.
+# A local replacement for the API, so that the demo needs no key and no network.
 python3 "$root/assets/demo_api.py" &
 trap 'kill $!' EXIT
 export OBSERVATORY_BASE_URL=http://127.0.0.1:8089 ANTHROPIC_API_KEY=demo

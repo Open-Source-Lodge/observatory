@@ -12,7 +12,7 @@ sh assets/demo.sh
 
 The script builds observatory, makes a small repository with two rules and a
 commit that breaks one of them in a temporary directory, starts
-`assets/demo_api.py` as a stand-in for the API, records a session with
+`assets/demo_api.py` as a local replacement for the API, records a session with
 `assets/demo.exp`, and writes the GIF.
 
 ## Release

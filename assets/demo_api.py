@@ -1,6 +1,6 @@
-# A stand-in for the Anthropic API for the demo GIF. It answers a draft
-# request with the same draft, and a check with the same verdicts. The script
-# assets/demo.sh starts this file.
+# A local replacement for the Anthropic API for the demo GIF. It answers a
+# draft request with the same draft, and a check with the same verdicts. The
+# script assets/demo.sh starts this file.
 import http.server
 import json
 import time
