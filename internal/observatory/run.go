@@ -1,4 +1,7 @@
-package main
+// Package observatory checks the changes in a git repository against rules in
+// plain language. A model (the Anthropic API, Claude Code or GitHub Copilot)
+// is the reviewer.
+package observatory
 
 import (
 	"context"
@@ -11,10 +14,10 @@ import (
 	"time"
 )
 
-// status shows progress on stderr while a request runs, so a slow model does
+// Status shows progress on stderr while a request runs, so a slow model does
 // not look like a hang. A terminal gets a spinner with the elapsed time; a
 // log gets one line. The report goes to stdout. stop ends the spinner.
-var status = func(text string) (stop func()) {
+var Status = func(text string) (stop func()) {
 	if fi, err := os.Stderr.Stat(); err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		fmt.Fprintln(os.Stderr, text+" ...")
 		return func() {}
@@ -49,6 +52,15 @@ type Finding struct {
 	OutputTokens int64 `json:"-"`
 }
 
+// TokensNote is the cost of one rule, or empty when the rule shared its
+// request with the other rules.
+func (f Finding) TokensNote() string {
+	if f.InputTokens == 0 && f.OutputTokens == 0 {
+		return ""
+	}
+	return fmt.Sprintf("  (%d in, %d out)", f.InputTokens, f.OutputTokens)
+}
+
 // Report is the outcome of one run.
 type Report struct {
 	Scope    string
@@ -69,11 +81,11 @@ func (r Report) Failed() bool {
 	return false
 }
 
-// check asks the model for a finding per rule. The rules that see the same
+// Check asks the model for a finding per rule. The rules that see the same
 // changes share one request, or each rule has its own request when the
 // config says per_rule. A rule that ignores every file in the changes
 // passes without a request.
-func check(ctx context.Context, cfg Config, rules []Rule, scope Scope) (Report, error) {
+func Check(ctx context.Context, cfg Config, rules []Rule, scope Scope) (Report, error) {
 	if len(rules) == 0 {
 		return Report{}, errors.New("no rules — add one with 'observatory add <title>'")
 	}
@@ -104,7 +116,7 @@ func check(ctx context.Context, cfg Config, rules []Rule, scope Scope) (Report, 
 			continue
 		}
 		asked = true
-		stop := status(label)
+		stop := Status(label)
 		one, err := ask(ctx, p, cfg, g, scope, seen)
 		stop()
 		if err != nil {
@@ -318,9 +330,9 @@ type Draft struct {
 	Why   string `json:"why"`
 }
 
-// draft asks the model to write the empty fields of a new rule. The fields
+// FillDraft asks the model to write the empty fields of a new rule. The fields
 // that have a value stay as they are.
-func draft(ctx context.Context, cfg Config, d Draft) (Draft, int64, int64, error) {
+func FillDraft(ctx context.Context, cfg Config, d Draft) (Draft, int64, int64, error) {
 	p, err := newProvider(cfg)
 	if err != nil {
 		return d, 0, 0, err

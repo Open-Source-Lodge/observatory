@@ -1,4 +1,4 @@
-package main
+package observatory
 
 import (
 	"bytes"
@@ -46,7 +46,7 @@ var newProvider = func(cfg Config) (provider, error) {
 
 // postJSON sends body to url as JSON and decodes the answer into out.
 //
-// postJSON does not retry after a 429 or a 5xx status. Add a retry when a
+// postJSON does not retry after a 429 or a 5xx Status. Add a retry when a
 // run fails on one.
 func postJSON(ctx context.Context, url string, headers map[string]string, body, out any) error {
 	data, _ := json.Marshal(body)

@@ -8,7 +8,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 demo=$(cd "${TMPDIR:-/tmp}" && pwd -P)/observatory-demo
 rm -rf "$demo"
 mkdir -p "$demo/bin"
-go build -o "$demo/bin/observatory" "$root"
+go build -o "$demo/bin/observatory" "$root/cmd/observatory"
 export PATH="$demo/bin:$PATH"
 
 # A small repository with two rules, and a commit that breaks one of them.

@@ -43,7 +43,7 @@ jobs:
             GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
               go build -trimpath \
               -ldflags "-s -w -X main.versionOverride=$TAG" \
-              -o "observatory-$os-$arch$ext" .
+              -o "observatory-$os-$arch$ext" ./cmd/observatory
           done
           sha256sum observatory-* > checksums.txt
           gh release upload "$TAG" observatory-* checksums.txt

@@ -5,10 +5,10 @@ BIN := bin/observatory
 all: lint test build
 
 build:
-	go build -o $(BIN) .
+	go build -o $(BIN) ./cmd/observatory
 
 run:
-	go run .
+	go run ./cmd/observatory
 
 test:
 	go test ./...
@@ -28,7 +28,7 @@ fmt:
 	go fmt ./...
 
 install:
-	go install .
+	go install ./cmd/observatory
 
 clean:
 	rm -rf bin

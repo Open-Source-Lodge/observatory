@@ -1,4 +1,4 @@
-package main
+package observatory
 
 import (
 	"os"
@@ -65,9 +65,9 @@ max_output_tokens = 8000
 per_rule = false
 `
 
-// loadConfig reads `<dir>/config`. A missing file gives the defaults. An
+// LoadConfig reads `<dir>/config`. A missing file gives the defaults. An
 // environment variable `OBSERVATORY_<KEY>` replaces the value of a key.
-func loadConfig(dir string) Config {
+func LoadConfig(dir string) Config {
 	cfg := defaultConfig()
 	path := filepath.Join(dir, "config")
 	value := func(key string) string {
@@ -104,8 +104,8 @@ func loadConfig(dir string) Config {
 	return cfg
 }
 
-// rulesDir is the `.observatory` directory of the repo the command runs in.
-func rulesDir() (string, error) {
+// RulesDir is the `.observatory` directory of the repo the command runs in.
+func RulesDir() (string, error) {
 	root, err := git("rev-parse", "--show-toplevel")
 	if err != nil {
 		return "", err
@@ -113,9 +113,9 @@ func rulesDir() (string, error) {
 	return filepath.Join(root, rulesDirName), nil
 }
 
-// editorCommand is the editor to open a rule with, as command and arguments.
+// EditorCommand is the editor to open a rule with, as command and arguments.
 // It is, in order of precedence: $OBSERVATORY_EDITOR, $VISUAL, $EDITOR.
-func editorCommand() []string {
+func EditorCommand() []string {
 	for _, v := range []string{
 		os.Getenv("OBSERVATORY_EDITOR"),
 		os.Getenv("VISUAL"),

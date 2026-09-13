@@ -1,6 +1,5 @@
-// Observatory checks the changes in a git repository against rules in plain
-// language. A model (the Anthropic API, Claude Code or GitHub Copilot) is the
-// reviewer.
+// Command observatory checks the changes in a git repository against rules in
+// plain language.
 package main
 
 import (

@@ -8,17 +8,19 @@ import (
 	"path/filepath"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/Open-Source-Lodge/observatory/internal/observatory"
 )
 
 func cmdInit(args []string) error {
 	if len(args) > 0 {
 		return errors.New("init takes no arguments")
 	}
-	dir, err := rulesDir()
+	dir, err := observatory.RulesDir()
 	if err != nil {
 		return err
 	}
-	created, err := initRepo(dir)
+	created, err := observatory.InitRepo(dir)
 	if err != nil {
 		return err
 	}
@@ -34,11 +36,11 @@ func cmdList(args []string) error {
 	if len(args) > 0 {
 		return errors.New("list takes no arguments")
 	}
-	dir, err := rulesDir()
+	dir, err := observatory.RulesDir()
 	if err != nil {
 		return err
 	}
-	rules, err := loadRules(dir)
+	rules, err := observatory.LoadRules(dir)
 	if err != nil {
 		return err
 	}
@@ -55,11 +57,11 @@ func cmdAdd(args []string) error {
 	if title == "" {
 		return errors.New("usage: observatory add <title>")
 	}
-	dir, err := rulesDir()
+	dir, err := observatory.RulesDir()
 	if err != nil {
 		return err
 	}
-	r, err := createRule(dir, title, "", "")
+	r, err := observatory.CreateRule(dir, title, "", "")
 	if err != nil {
 		return err
 	}
@@ -69,7 +71,7 @@ func cmdAdd(args []string) error {
 }
 
 func cmdRun(args []string) error {
-	scope, err := parseScope(args)
+	scope, err := observatory.ParseScope(args)
 	if err != nil {
 		return err
 	}
@@ -86,22 +88,22 @@ func cmdRun(args []string) error {
 
 // runCheck loads the changes and asks the model about rules. A nil rules
 // loads every rule.
-func runCheck(ctx context.Context, scope Scope, rules []Rule) (Report, error) {
-	dir, err := rulesDir()
+func runCheck(ctx context.Context, scope observatory.Scope, rules []observatory.Rule) (observatory.Report, error) {
+	dir, err := observatory.RulesDir()
 	if err != nil {
-		return Report{}, err
+		return observatory.Report{}, err
 	}
 	if rules == nil {
-		if rules, err = loadRules(dir); err != nil {
-			return Report{}, err
+		if rules, err = observatory.LoadRules(dir); err != nil {
+			return observatory.Report{}, err
 		}
 	}
-	return check(ctx, loadConfig(dir), rules, scope)
+	return observatory.Check(ctx, observatory.LoadConfig(dir), rules, scope)
 }
 
 // printReport writes one line per rule, and the cost. In GitHub Actions it
 // also writes an annotation per failure, so the failure shows on the file.
-func printReport(r Report) {
+func printReport(r observatory.Report) {
 	fmt.Println("model: " + r.Model)
 	fmt.Println("checked " + r.Scope)
 	for _, f := range r.Findings {
@@ -109,7 +111,7 @@ func printReport(r Report) {
 		if !f.Pass {
 			mark = "FAIL"
 		}
-		fmt.Printf("%s  %s  %s%s\n", mark, f.ID, f.Reason, tokensNote(f))
+		fmt.Printf("%s  %s  %s%s\n", mark, f.ID, f.Reason, f.TokensNote())
 		if !f.Pass && os.Getenv("GITHUB_ACTIONS") != "" {
 			file := ""
 			if len(f.Files) > 0 {
@@ -119,13 +121,4 @@ func printReport(r Report) {
 		}
 	}
 	fmt.Printf("tokens: %d in, %d out\n", r.InputTokens, r.OutputTokens)
-}
-
-// tokensNote is the cost of one rule, or empty when the rule shared its
-// request with the other rules.
-func tokensNote(f Finding) string {
-	if f.InputTokens == 0 && f.OutputTokens == 0 {
-		return ""
-	}
-	return fmt.Sprintf("  (%d in, %d out)", f.InputTokens, f.OutputTokens)
 }
