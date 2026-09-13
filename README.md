@@ -13,6 +13,8 @@ and the changes to the model, and the model gives a verdict for each rule.
 Observatory has a command line tool and a terminal user interface. It runs on
 your machine, or in a GitHub Actions workflow.
 
+<p align="center"><img src="assets/demo.gif" alt="observatory interactive mode" width="900"></p>
+
 ## Install
 
 ```sh

@@ -1,5 +1,20 @@
 # Development
 
+## Demo GIF
+
+The `README.md` shows `assets/demo.gif`. Make the GIF again when the
+interface changes:
+
+```sh
+brew install asciinema agg font-dejavu
+sh assets/demo.sh
+```
+
+The script builds observatory, makes a small repository with two rules and a
+commit that breaks one of them in a temporary directory, starts
+`assets/demo_api.py` as a local replacement for the API, records a session with
+`assets/demo.exp`, and writes the GIF.
+
 ## Release
 
 The `release` workflow runs [release-please](https://github.com/googleapis/release-please)
