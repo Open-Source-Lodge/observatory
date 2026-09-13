@@ -1,4 +1,4 @@
-package main
+package observatory
 
 import (
 	"context"
@@ -91,12 +91,12 @@ func TestParseScope(t *testing.T) {
 		{[]string{"--bogus"}, Scope{}, true},
 	}
 	for _, tt := range tests {
-		got, err := parseScope(tt.args)
+		got, err := ParseScope(tt.args)
 		if (err != nil) != tt.bad {
-			t.Errorf("parseScope(%v) err = %v, want bad=%v", tt.args, err, tt.bad)
+			t.Errorf("ParseScope(%v) err = %v, want bad=%v", tt.args, err, tt.bad)
 		}
 		if !tt.bad && got != tt.want {
-			t.Errorf("parseScope(%v) = %+v, want %+v", tt.args, got, tt.want)
+			t.Errorf("ParseScope(%v) = %+v, want %+v", tt.args, got, tt.want)
 		}
 	}
 }
@@ -204,8 +204,8 @@ func TestAskPerRuleTokens(t *testing.T) {
 	if report.Model != "m" || report.InputTokens != 7 || report.OutputTokens != 3 {
 		t.Errorf("report: %+v", report)
 	}
-	if got := tokensNote(report.Findings[0]); got != "  (7 in, 3 out)" {
-		t.Errorf("tokensNote = %q", got)
+	if got := report.Findings[0].TokensNote(); got != "  (7 in, 3 out)" {
+		t.Errorf("TokensNote = %q", got)
 	}
 	// The estimate guards max_tokens before the request.
 	small := Config{Model: "m", MaxTokens: 1}
@@ -214,7 +214,7 @@ func TestAskPerRuleTokens(t *testing.T) {
 	}
 	// Two rules share one request: no per-rule tokens.
 	report, _ = ask(context.Background(), fakeProvider{}, cfg, testRules, Scope{}, "+x")
-	if tokensNote(report.Findings[0]) != "" {
+	if report.Findings[0].TokensNote() != "" {
 		t.Errorf("shared request got per-rule tokens: %+v", report.Findings[0])
 	}
 }
@@ -234,7 +234,7 @@ func TestDraft(t *testing.T) {
 }
 
 func TestCheckIgnore(t *testing.T) {
-	status = func(string) func() { return func() {} }
+	Status = func(string) func() { return func() {} }
 	rules := []Rule{
 		{ID: "aaaa0002", Title: "No prints", Text: "x", Ignore: []string{"*.py"}},
 		{ID: "aaaa0001", Title: "Use httpx", Text: "x"},
@@ -255,7 +255,7 @@ func TestCheckIgnore(t *testing.T) {
 		show + " -- :(exclude,top,glob)**/*.py :(exclude,top,glob)**/*.py/**": "",
 		show: "diff --git a/main.py b/main.py\n+print(1)\n",
 	})
-	report, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
+	report, err := Check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,10 +270,10 @@ func TestCheckIgnore(t *testing.T) {
 // TestCheckEmptyScope: a scope with no change at all is an error, not a
 // silent pass.
 func TestCheckEmptyScope(t *testing.T) {
-	status = func(string) func() { return func() {} }
+	Status = func(string) func() { return func() {} }
 	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
 	stubGit(t, map[string]string{"show --format=commit %H%n%s%n%n%b --patch HEAD": ""})
-	_, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, testRules, Scope{Commit: "HEAD"})
+	_, err := Check(context.Background(), Config{Model: "m", MaxTokens: 100000}, testRules, Scope{Commit: "HEAD"})
 	if err == nil || !strings.Contains(err.Error(), "nothing to check") {
 		t.Errorf("empty scope gave %v", err)
 	}
@@ -283,7 +283,7 @@ func TestCheckEmptyScope(t *testing.T) {
 // empty scope and a rule that ignores everything. Its error must reach the
 // user, and not become "nothing to check".
 func TestCheckEmptyScopeGitError(t *testing.T) {
-	status = func(string) func() { return func() {} }
+	Status = func(string) func() { return func() {} }
 	newProvider = func(Config) (provider, error) { return fakeProvider{}, nil }
 	rules := []Rule{{ID: "aaaa0001", Title: "Use httpx", Text: "x", Ignore: []string{"*.py"}}}
 	show := "show --format=commit %H%n%s%n%n%b --patch HEAD"
@@ -291,7 +291,7 @@ func TestCheckEmptyScopeGitError(t *testing.T) {
 	stubGit(t, map[string]string{
 		show + " -- :(exclude,top,glob)**/*.py :(exclude,top,glob)**/*.py/**": "",
 	})
-	_, err := check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
+	_, err := Check(context.Background(), Config{Model: "m", MaxTokens: 100000}, rules, Scope{Commit: "HEAD"})
 	if err == nil || strings.Contains(err.Error(), "nothing to check") {
 		t.Errorf("the git error did not reach the caller: %v", err)
 	}

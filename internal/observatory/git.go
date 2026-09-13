@@ -1,4 +1,4 @@
-package main
+package observatory
 
 import (
 	"bytes"
@@ -54,8 +54,8 @@ func (s Scope) String() string {
 	}
 }
 
-// parseScope reads the scope flags of `run`.
-func parseScope(args []string) (Scope, error) {
+// ParseScope reads the scope flags of `run`.
+func ParseScope(args []string) (Scope, error) {
 	var s Scope
 	for i := 0; i < len(args); i++ {
 		arg, val, hasVal := strings.Cut(args[i], "=")

@@ -1,5 +1,12 @@
 # Development
 
+## Layout
+
+The command is in `cmd/observatory`. The package that reads the rules, the
+config and the git changes, and that talks to the model, is in
+`internal/observatory`. Build the command with `make build`, or run it with
+`go run ./cmd/observatory`.
+
 ## Demo GIF
 
 The `README.md` shows `assets/demo.gif`. Make the GIF again when the

@@ -11,6 +11,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/Open-Source-Lodge/observatory/internal/observatory"
 )
 
 var (
@@ -43,15 +45,15 @@ const (
 // scopes are the scopes the s key cycles through, with a name for the screen.
 var scopes = []struct {
 	name  string
-	scope Scope
+	scope observatory.Scope
 }{
-	{"the last commit", Scope{}},
-	{"the uncommitted changes", Scope{Uncommitted: true}},
-	{"every tracked file", Scope{All: true}},
+	{"the last commit", observatory.Scope{}},
+	{"the uncommitted changes", observatory.Scope{Uncommitted: true}},
+	{"every tracked file", observatory.Scope{All: true}},
 }
 
 type rulesMsg struct {
-	rules []Rule
+	rules []observatory.Rule
 	err   error
 }
 
@@ -63,7 +65,7 @@ type doneMsg struct {
 
 // draftMsg is the draft the model wrote for the new rule.
 type draftMsg struct {
-	draft Draft
+	draft observatory.Draft
 	model string
 	in    int64
 	out   int64
@@ -71,13 +73,13 @@ type draftMsg struct {
 }
 
 type reportMsg struct {
-	report Report
+	report observatory.Report
 	err    error
 }
 
 type model struct {
 	dir     string
-	rules   []Rule
+	rules   []observatory.Rule
 	cursor  int
 	mode    mode
 	scope   int // index into scopes
@@ -87,15 +89,15 @@ type model struct {
 	msgErr  bool
 	busy    string
 	spinner spinner.Model
-	report  Report
+	report  observatory.Report
 }
 
 func tui() error {
-	dir, err := rulesDir()
+	dir, err := observatory.RulesDir()
 	if err != nil {
 		return err
 	}
-	status = func(string) func() { return func() {} } // the spinner of the screen shows the progress
+	observatory.Status = func(string) func() { return func() {} } // the spinner of the screen shows the progress
 	sp := spinner.New(spinner.WithSpinner(spinner.Dot), spinner.WithStyle(cursorStyle))
 	_, err = tea.NewProgram(model{dir: dir, spinner: sp}, tea.WithAltScreen()).Run()
 	return err
@@ -104,7 +106,7 @@ func tui() error {
 func (m model) Init() tea.Cmd { return m.loadRules }
 
 func (m model) loadRules() tea.Msg {
-	rules, err := loadRules(m.dir)
+	rules, err := observatory.LoadRules(m.dir)
 	return rulesMsg{rules: rules, err: err}
 }
 
@@ -127,7 +129,7 @@ func newInputs() []textinput.Model {
 
 func createCmd(dir, title, text, explain string) tea.Cmd {
 	return func() tea.Msg {
-		r, err := createRule(dir, title, text, explain)
+		r, err := observatory.CreateRule(dir, title, text, explain)
 		if err != nil {
 			return doneMsg{err: err}
 		}
@@ -136,17 +138,17 @@ func createCmd(dir, title, text, explain string) tea.Cmd {
 }
 
 // draftCmd asks the model to write the empty fields of the new rule.
-func draftCmd(dir string, d Draft) tea.Cmd {
+func draftCmd(dir string, d observatory.Draft) tea.Cmd {
 	return func() tea.Msg {
-		cfg := loadConfig(dir)
-		d, in, out, err := draft(context.Background(), cfg, d)
+		cfg := observatory.LoadConfig(dir)
+		d, in, out, err := observatory.FillDraft(context.Background(), cfg, d)
 		return draftMsg{draft: d, model: cfg.Model, in: in, out: out, err: err}
 	}
 }
 
-func deleteCmd(r Rule) tea.Cmd {
+func deleteCmd(r observatory.Rule) tea.Cmd {
 	return func() tea.Msg {
-		if err := deleteRule(r); err != nil {
+		if err := observatory.DeleteRule(r); err != nil {
 			return doneMsg{err: err}
 		}
 		return doneMsg{text: "deleted rule " + r.ID}
@@ -154,7 +156,7 @@ func deleteCmd(r Rule) tea.Cmd {
 }
 
 // runCmd checks scope against rules; nil means every rule.
-func runCmd(scope Scope, rules []Rule) tea.Cmd {
+func runCmd(scope observatory.Scope, rules []observatory.Rule) tea.Cmd {
 	return func() tea.Msg {
 		report, err := runCheck(context.Background(), scope, rules)
 		return reportMsg{report: report, err: err}
@@ -163,8 +165,8 @@ func runCmd(scope Scope, rules []Rule) tea.Cmd {
 
 // editorCmd opens the directory of the rule in the editor. A terminal editor
 // gets the screen for as long as it runs; a windowed one returns at once.
-func editorCmd(r Rule) tea.Cmd {
-	argv := editorCommand()
+func editorCmd(r observatory.Rule) tea.Cmd {
+	argv := observatory.EditorCommand()
 	if len(argv) == 0 {
 		return func() tea.Msg {
 			return doneMsg{err: errors.New("no editor set — set OBSERVATORY_EDITOR, VISUAL or EDITOR")}
@@ -274,7 +276,7 @@ func (m model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		if r, ok := m.selected(); ok {
 			m.setMsg("", nil)
-			return m.start("check of "+scopes[m.scope].name+" against rule "+r.ID, runCmd(scopes[m.scope].scope, []Rule{r}))
+			return m.start("check of "+scopes[m.scope].name+" against rule "+r.ID, runCmd(scopes[m.scope].scope, []observatory.Rule{r}))
 		}
 	case "n":
 		m.mode, m.focus, m.inputs = modeNew, 0, newInputs()
@@ -309,7 +311,7 @@ func (m model) updateNew(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeList
 		return m, nil
 	case "ctrl+g":
-		d := Draft{Title: m.inputs[0].Value(), Rule: m.inputs[1].Value(), Why: m.inputs[2].Value()}
+		d := observatory.Draft{Title: m.inputs[0].Value(), Rule: m.inputs[1].Value(), Why: m.inputs[2].Value()}
 		m.setMsg("", nil)
 		return m.start("draft of the rule with the model", draftCmd(m.dir, d))
 	case "enter":
@@ -375,9 +377,9 @@ func (m model) start(text string, cmd tea.Cmd) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(m.spinner.Tick, cmd)
 }
 
-func (m model) selected() (Rule, bool) {
+func (m model) selected() (observatory.Rule, bool) {
 	if m.cursor < 0 || m.cursor >= len(m.rules) {
-		return Rule{}, false
+		return observatory.Rule{}, false
 	}
 	return m.rules[m.cursor], true
 }
@@ -465,7 +467,7 @@ func (m model) viewReport(b *strings.Builder) {
 		if !f.Pass {
 			mark = errStyle.Render("FAIL")
 		}
-		b.WriteString(fmt.Sprintf("  %s  %s  %s%s\n", mark, dimStyle.Render(f.ID), f.Reason, dimStyle.Render(tokensNote(f))))
+		b.WriteString(fmt.Sprintf("  %s  %s  %s%s\n", mark, dimStyle.Render(f.ID), f.Reason, dimStyle.Render(f.TokensNote())))
 	}
 	b.WriteString(fmt.Sprintf("\n  %s\n", dimStyle.Render(fmt.Sprintf("tokens: %d in, %d out", m.report.InputTokens, m.report.OutputTokens))))
 }

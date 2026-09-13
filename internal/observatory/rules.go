@@ -1,4 +1,4 @@
-package main
+package observatory
 
 import (
 	"errors"
@@ -34,10 +34,10 @@ func (r Rule) Summary() string {
 	return ""
 }
 
-// loadRules reads every `<dir>/<id>/rule.md` and `<dir>/<id>/ignore`,
-// sorted by ID. A directory without a rule.md is not a rule, and loadRules
+// LoadRules reads every `<dir>/<id>/rule.md` and `<dir>/<id>/ignore`,
+// sorted by ID. A directory without a rule.md is not a rule, and LoadRules
 // ignores it.
-func loadRules(dir string) ([]Rule, error) {
+func LoadRules(dir string) ([]Rule, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -93,9 +93,9 @@ func titleOf(md, fallback string) string {
 	return fallback
 }
 
-// createRule makes `<dir>/<id>/` with rule.md and explain.md. The text and
+// CreateRule makes `<dir>/<id>/` with rule.md and explain.md. The text and
 // the explanation are optional; the files then hold only the title.
-func createRule(dir, title, text, explain string) (Rule, error) {
+func CreateRule(dir, title, text, explain string) (Rule, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return Rule{}, errors.New("a rule needs a title")
@@ -142,16 +142,16 @@ func newID(dir string) (string, error) {
 	return fmt.Sprintf("%s%03d", idPrefix, highest+1), nil
 }
 
-// deleteRule removes the directory of the rule.
-func deleteRule(r Rule) error {
+// DeleteRule removes the directory of the rule.
+func DeleteRule(r Rule) error {
 	if r.Dir == "" || r.ID == "" {
 		return errors.New("the rule has no directory, so there is nothing to delete")
 	}
 	return os.RemoveAll(r.Dir)
 }
 
-// initRepo makes `<dir>` with a config file. It leaves an existing config alone.
-func initRepo(dir string) (created bool, err error) {
+// InitRepo makes `<dir>` with a config file. It leaves an existing config alone.
+func InitRepo(dir string) (created bool, err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return false, err
 	}

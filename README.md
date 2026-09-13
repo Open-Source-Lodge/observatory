@@ -19,7 +19,7 @@ your machine, or in a GitHub Actions workflow.
 
 ```sh
 make build                                                  # then move bin/observatory into a directory on your PATH
-go install github.com/Open-Source-Lodge/observatory@latest
+go install github.com/Open-Source-Lodge/observatory/cmd/observatory@latest
 ```
 
 Each [release](https://github.com/Open-Source-Lodge/observatory/releases) has
